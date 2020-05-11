@@ -22,6 +22,7 @@ gfortran -O2 -o sheusp_impl_NOprecon_1M10_res05.exe sheusp_functions.o sheusp_im
 Step 2) Run Simulation
 
 Create required directories and run the respective shallow-water model version
+The weights required by the machine-learned preconditioners are provided in directory "weights".
 
 
 Step 3) Create Convergence plot
