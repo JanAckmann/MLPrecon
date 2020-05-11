@@ -19,9 +19,10 @@ Example using no preconditioner:
 gfortran -O2 -c sheusp_impl_NOprecon_1M10_res05.f90
 gfortran -O2 -o sheusp_impl_NOprecon_1M10_res05.exe sheusp_functions.o sheusp_impl_NOprecon_1M10_res05.o
 
-Step 2)
 
+Step 2)
 Create required directories and run the respective shallow-water model version
+
 
 Step 3)
 Convergence plots were done using:
