@@ -3,6 +3,7 @@ Machine-Learned Preconditioners for Linear Solvers in Geophysical Flows
 
 
 Step 1)
+
 Compiling:
 
 Compile module "sheusp_functions.f90":
@@ -21,10 +22,12 @@ gfortran -O2 -o sheusp_impl_NOprecon_1M10_res05.exe sheusp_functions.o sheusp_im
 
 
 Step 2)
+
 Create required directories and run the respective shallow-water model version
 
 
 Step 3)
+
 Convergence plots were done using:
 plot_residual_Convergence_MaxMinMedian.py
 Directory names and simulation periods are specified in the script header.
