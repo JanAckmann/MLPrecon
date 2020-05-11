@@ -197,7 +197,7 @@ INTEGER          :: Order_Layer1(32,176), max_ind, k
 
 do i=0,31
   write(latitude_layer,*) i
-  filename_NN= 'weights/FortranWeights_model2x2_1x0_l0w1coeff_R_uselinear_noinputact_reduced_r_only_rLat'&
+  filename_NN= 'weights/FortranWeights_model2x2_1x0_l0w1coeff_R_reduced_Lat'&
               & //trim(adjustl(latitude_layer))//'_layer0.txt' 
   call read_layer(filename_NN,Layer1(i+1,:,:),177,1)
 enddo

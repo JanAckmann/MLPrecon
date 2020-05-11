@@ -191,7 +191,7 @@ INTEGER          :: Order_Layer1(32,176), max_ind, k
 !! read in weights for L0N0, 5x5 preconditioner
 do i=0,31
   write(latitude_layer,*) i
-  filename_NN= 'weights/FortranWeights_model2x2_1x0_l1w5coeff_R_Lat'//trim(adjustl(latitude_layer))//'_layer0.txt' 
+  filename_NN= 'weights/FortranWeights_model2x2_1x0_l0w1coeff_R_Lat'//trim(adjustl(latitude_layer))//'_layer0.txt' 
   call read_layer(filename_NN,Layer1(i+1,:,:),177,1)
 enddo
 
