@@ -5,8 +5,7 @@ implicit none
 
 INTEGER, PARAMETER :: NLON=128/2 +2,NLAT=32
 INTEGER, PARAMETER :: N=NLON,M=NLAT,NM=N*M
- character(len=150) :: EXP_NAME, Dp_depth_str
-
+ character(len=105) :: EXP_NAME, Dp_depth_str
 double precision :: U(N,M,0:1),&
                & V(N,M,0:1),  &
                & PD(N,M),     &
@@ -178,30 +177,6 @@ INTEGER :: I, J, KF, KT, NPLOT, NPRINT, NT, num_of_bits, ID_PREC
 INTEGER :: stencil, ueber
 
 logical :: codesignQ, codesignD, mountain, gcr52, save_time, QRelax
-
-!!! Machine Learning
-character(len=150) :: filename_NN, latitude_layer
-double precision :: Layer1(32,177,1) , &
-                    Layer2(32,6  ,1), &
-                    max_val
-INTEGER          :: Order_Layer1(32,176), max_ind, k
-
-
-
-!! read in weights for L0N0, 5x5 preconditioner
-do i=0,31
-  write(latitude_layer,*) i
-  filename_NN= 'weights/FortranWeights_model2x2_1x0_l0w1coeff_R_Lat'//trim(adjustl(latitude_layer))//'_layer0.txt' 
-  call read_layer(filename_NN,Layer1(i+1,:,:),177,1)
-enddo
-
-Order_Layer1(:,:)=0
-
-
-!! setup shallow water model
-!!
-
-
 mountain = .false.
 
 
@@ -210,32 +185,33 @@ mountain = .false.
   gcr52     = .false.
 
 
+  QRelax    =.false.
+  !DP_Depth = 6
+  
+ !!! Experiment identifiers 
+stencil=0
 
-  QRelax    =.false.     !! no polar filtering
-  stencil=0              
-  QRelax_str=0.0d0       !! filtering strength !4.6d0*10.0d0**(-2.0d0)
+QRelax_str=0.0d0 !4.6d0*10.0d0**(-2.0d0)
 !0.00000001d0
 
-do ID_PREC=5,5,-5  !! preconditioner, later overwritten in linear solver: "gcr_pre"
-  do IRHW = 3,3   !! zonal flow with ETOPO5 topography
-
+do ID_PREC=5,5,-5
+  do IRHW = 3,3
+ !do DP_Depth =4,4!4! 64
   
-  DP_Depth=0          !! no varying precision
-  do DP_relax=0,0     !! no polar filtering
+  DP_Depth=0
+  do DP_relax=0,0
+   write(Dp_depth_str,*) DP_Depth
 
-   do num_of_bits=60,60,1  !! standard double precision: 52 bits
-   write(Dp_depth_str,*) num_of_bits
-
-
-   EXP_NAME= 'data/data_ADI_NOTgcr_EXP3_Dp_1M10_MLPrecon_iterINF_FULL_res05'
+  !ID_PREC=0
+   EXP_NAME= 'data/data_ADI_NOTgcr_EXP3_Dp_1M10_pseut_res05'
   ! EXP_NAME= 'data_ADI_Precon_init52'
 
-   !EXP_NAME= 'data/PiotrV2_ADI_L2_1M3_R10_D'//trim(adjustl(Dp_depth_str))//'_NoQfil_dt200_res4'
 
 
+   do num_of_bits=52,52,2
     save_time=.false.
    
-    If (num_of_bits>10) then
+    If (num_of_bits<16 .or. num_of_bits>50) then
 ! if .not. init52
 
 
@@ -258,25 +234,55 @@ do ID_PREC=5,5,-5  !! preconditioner, later overwritten in linear solver: "gcr_p
    write(*,*) 'codesign: Q | D ', codesignQ, codesignD, 'default bits: ', num_of_bits
 
 
+
+!If (IRHW==0) then
+! DATA NT,NPRINT/12096,864/
+!  DT_52=100.0d0 
+! ! what if it ran with the timestep of the explicit model 
+! !DT_52=40.0d0   
+! DT = DT_52
+!else
+!   DATA NT,NPRINT/2016,144/
+! DT_52=600.0d0 
+!if (IRHW==2) then
+!NT = 4032 
+!NPRINT =288
+!DT_52=300.0d0 
+!else
+!NT = 3456 !240 
+!NPRINT =216
+!DT_52=400.0d0
+!endif
 if (IRHW==2) then
-NT = 4*60*30 ! 345600/4/4/2 !322560 !60480 !40320 
+NT = 345600/4/4/4 !322560 !60480 !40320 
+NPRINT =23040/4/4/4 !4320!2880
+DT_52= 3.75d0*4.0d0*4.0d0*4.0d0 !20.0d0 
+!NT = 3456*2 !240 
+!NPRINT = 432 !216
+!DT_52=200.0d0
+!NT = 345600/(16*4) !322560 !60480 !40320 
+!NPRINT =23040/(16*4) !4320!2880
+!DT_52=3.75d0*16.0d0*4.0d0 !20.0d0 
+!NT = 4032 
+!NPRINT =288
+!DT_52=300.0d0 
+elseif (IRHW==3) then
+NT = 4*60*24*30/4 ! 345600/4/4/2 !322560 !60480 !40320 
 NPRINT =60*24/4 ! 23040/4/4/2 !4320!2880
 DT_52= 4.0d0* 60  !3.0d0*4.0d0*4.0d0*2.0d0 !20.0d0 
-
-elseif (IRHW==3) then    !! zonal flow with ETOPO5
-NT = 4*60*24*30/4 ! 345600/4/4/2 !322560 !60480 !40320 
-NPRINT = 60/4 !hourly 60*24/4 !daily 23040/4/4/2 !4320!2880
-DT_52= 4.0d0* 60  !3.0d0*4.0d0*4.0d0*2.0d0 !20.0d0 
-
 else
-NT = 4*60*30 ! 345600/4/4/2 !322560 !60480 !40320 
-NPRINT = 60/4 !hourly 60*24/4 !daily 23040/4/4/2 !4320!2880
-DT_52= 4.0d0* 60
+NT = 3456 !240 
+NPRINT =216
+DT_52=400.0d0
 endif
 write(*,*) 'Timestep:', DT_52
-
+ ! what if it ran with the timestep of the explicit model 
+ ! DT_52=40.0d0   
  DT = DT_52
-
+!endif
+ ! what if it ran with the timestep of the explicit model 
+ ! DATA NT,NPRINT/30240,2160/
+ !!! start of calculating every coefficient in HP
  
  
 F0_52=1.4584E-4
@@ -294,11 +300,11 @@ R=R_52
 
 
 ! CHARACTERISTICS OF THE FLOW
-USCAL_52 = 5.0d0 
+USCAL_52 = 5.0d0 !Piotrs new numbers old !5.0d0
 H00_52  = 8.E3
 HMTS_52  = 1.E-6 
 
-
+ !Piotrs new numbers old 6.E3  !! changed from HMTS  = 2.E3 in accordance to explicit
 if (IRHW==2) then
 !  
   mountain=.true.
@@ -330,6 +336,17 @@ ICOUNT = 0
 
 
 
+
+
+!COMPUTATIONS:
+
+!      CALL OPNGKS
+!      CALL GSCLIP(0)
+!     CALL GOPKS (6,0)        ! open GKS
+!     CALL GOPWK (1,2,1)      ! open CGM workstation
+!     CALL GACWK (1)          ! activate workstation
+!     CALL GOPWK (2,0,8)      ! open X workstation
+!     CALL GACWK (2)          ! activate workstation
 
 !COMPUTE SOME RELEVANT CONSTANTS
 
@@ -375,6 +392,8 @@ DX_52= 2.0d0*ACOS(-1.0d0)/FLOAT(N-2)
 DX = DX_52
 DY_52= ACOS(-1.0d0)/FLOAT(M)
 DY = DY_52
+! param test2
+
 
 GC1_52= DT_52/(2.0d0*ACOS(-1.0d0)/FLOAT(N-2))                                ! DT/DX
 GC1 = GC1_52
@@ -414,6 +433,8 @@ end do
 
 DO J=1,M
   DO I=1,N
+    ! param test3
+
 
     HX_52(I,J)=R_52*COS(Y_52(J))
 
@@ -421,12 +442,23 @@ DO J=1,M
     HY_52(I,J)=R_52
     HY(I,J) = HY_52(I,J)
 
+
+    ! end param test3
+    ! TEST DHX2Y(I,J)=-DT*R**2*SIN(2.*Y(J))/(HX(I,J)**2*HY(I,J))*.5
+    !param test4
+
+
     S_52(I,J)=HX_52(I,J)*HY_52(I,J)
     S(I,J) = S_52(I,J)
 
+
+    ! end param test4
   end do
 
 end do
+
+!param test5
+
 
 DO I=2,N-1
   DO J=2,M-1
@@ -441,6 +473,7 @@ DO I=2,N-1
 end do
 
 
+!end param test5
       
 CALL XBC(DHX2Y,N,M)
 CALL XBC_52(DHX2Y_52,N,M)
@@ -454,15 +487,15 @@ CALL XBC_52(DHX2Y_52,N,M)
 If(IRHW .NE. 3) then
 CALL TOPOGR(P0_HP,X_52,Y_52,N,M, mountain)
 else
-CALL ETOPO5(P0_HP,X_52,Y_52,N,M, mountain)  !! load ETOPO5 dataset
+CALL ETOPO5(P0_HP,X_52,Y_52,N,M, mountain)
 endif
-!call write_MLfields(P0_HP, 0, N, M, EXP_NAME, 'Topo')
-
+call write_MLfields(P0_HP, 0, N, M, EXP_NAME, 'Topo')
 IF(IRHW.EQ.0) CALL INITZON(U_52,V_52,PT_HP,COR_52,X_52,Y_52,N,M,F0_52,BETA_52,H00_52,R_52,PVEL_52)
 IF(IRHW.EQ.1) CALL INITRHW(U_52,V_52,PT_HP,COR_52,X_52,Y_52,N,M,F0_52,R_52)
 IF(IRHW.EQ.2) CALL INITZON(U_52,V_52,PT_HP,COR_52,X_52,Y_52,N,M,F0_52,BETA_52,H00_52,R_52,PVEL_52)
 IF(IRHW.EQ.3) CALL INITZON(U_52,V_52,PT_HP,COR_52,X_52,Y_52,N,M,F0_52,BETA_52,H00_52,R_52,PVEL_52)
 
+!! call calculateAVGdepth(PD)
 
 IF(IRST.EQ.0) THEN
 ! INITIATE PRIMARY VARIABLES (PD, QX, QY)
@@ -497,6 +530,16 @@ S_full=0.0d0
   write(*,*) 'average Depth', D0  
 
 If(QRelax) then
+!If(IRHW.EQ.1) then
+!QX_REL(:,:)=0.0d0
+!QY_REL(:,:)=0.0d0
+!do J=1,M
+!QX_REL(:,J)=SUM(QX_HP(2:N-1,J))/(N-2)
+!QY_REL(:,J)=SUM(QY_HP(2:N-1,J))/(N-2)
+!enddo
+!QX_REL(:,:)=13.793 !QX_HP(:,:)
+!QY_REL(:,:)=SUM(QY_HP(2:N-1,1))/(N-2) !QY_HP(:,:)
+!write(*,*) 'QX_rel', 13.793, 'QY_rel',SUM(QY_HP(2:N-1,1))/(N-2)
 
 do J=1,M
  do I=1+stencil,N-stencil
@@ -506,6 +549,7 @@ do J=1,M
 enddo
 do J=1,M
  do I=2,stencil
+  !write(*,*) 'test1', I, J
   ueber=2-(I-stencil)
   QX_REL(I,J)=(SUM(QX_HP(N-ueber:N,J))+SUM(QX_HP(2+1:I+stencil,J)))/(1.0d0+2.0d0*stencil)
   QY_REL(I,J)=(SUM(QY_HP(N-ueber:N,J))+SUM(QY_HP(2+1:I+stencil,J)))/(1.0d0+2.0d0*stencil)
@@ -513,6 +557,7 @@ do J=1,M
 enddo
 do J=1,M
  do I=N-stencil+1,N-1
+  !write(*,*) 'test2', I, J
   ueber=(I+stencil)-(N-1)
   QX_REL(I,J)=(SUM(QX_HP(I-stencil:N-1,J))+SUM(QX_HP(2:1+ueber,J)))/(1.0d0+2.0d0*stencil)
   QY_REL(I,J)=(SUM(QY_HP(I-stencil:N-1,J))+SUM(QY_HP(2:1+ueber,J)))/(1.0d0+2.0d0*stencil)
@@ -520,11 +565,43 @@ do J=1,M
 enddo
 CALL XBC(QX_REL,N,M)
 CALL XBC(QY_REL,N,M)
+!elseif(IRHW.EQ.2)then
+!QX_REL(:,:)=0.0d0
+!QY_REL(:,:)=0.0d0
+!do J=1,M
+!QX_REL(:,J)=SUM(QX_HP(2:N-1,J))/(N-2)
+!QY_REL(:,J)=SUM(QY_HP(2:N-1,J))/(N-2)
+!enddo
+!do J=1,M
+! do I=2,N-1
+!  QX_REL(I,J)=SUM(QX_HP(I-1:I+1,J))/(3.0d0)
+!  QY_REL(I,J)=SUM(QY_HP(I-1:I+1,J))/(3.0d0)
+! enddo
+!enddo
+!CALL XBC(QX_REL,N,M)
+!CALL XBC(QY_REL,N,M)
+!elseif(IRHW.EQ.0)then
+!do J=1,M
+!QX_REL(:,J)=SUM(QX_HP(2:N-1,J))/(N-2)
+!QY_REL(:,J)=SUM(QY_HP(2:N-1,J))/(N-2)
+!enddo
 
-
+!endif
+write(*,*) 'QX_rel 1', SUM(QX_REL(2:N-1,1))/(N-2), 'QX_rel M-1', SUM(QX_REL(2:N-1,M))/(N-2)
+write(*,*) 'QX_rel 4', SUM(QX_REL(2:N-1,4))/(N-2), 'QX_rel M-3', SUM(QX_REL(2:N-1,M-3))/(N-2)
 endif
 
 If(QRelax) then
+! linear
+!  Do J=1,M
+!   If (J<=DP_relax) then
+!    Relax_M(J)=QRelax_str*(DP_relax-(J-1))/DP_relax
+!   elseif(J>=M+1-DP_relax) then
+!    Relax_M(J)=QRelax_str*(J-(M-DP_relax))/DP_relax
+!   else
+!    Relax_M(J)=0.0d0
+!   endif
+!  end do
 
 
   Do J=1,M
@@ -537,9 +614,12 @@ If(QRelax) then
 
 Relax_M(:)=QRelax_str*Relax_M(:)
 
+!do J=1,M
+!Relax_M(J)=QRelax_str
+!end do
 endif
 
-!! Prepare linear Operator coefficients for subroutine gcr_pre
+!! GCR parameters
 If(.not. QRelax) then
       DO J=1,M
 
@@ -608,6 +688,8 @@ else
       enddo
 
 endif
+!! end gcr params
+! if init52
 
 
   DO J=1,M
@@ -636,16 +718,19 @@ endif
     end do
   end do
 
-!! prepare output
+
+
+!!! make sure that everything until here is initialized and calculated in double precision
+!!! before actually being downcasted
    call init_perf_markers(PD_HP(:,:)+P0(:,:),QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:), rpe_0, &
                    & codesignQ, codesignD, IRHW, X, Y, N, M, num_of_bits, ID_prec, EXP_NAME)
-!! write initial fields
+
    call write_fields(PD_HP(:,:)+P0(:,:),QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:), rpe_0, &
 & codesignQ, codesignD, IRHW, X, Y, N, M, num_of_bits, ID_prec, EXP_NAME)  !PD_HP(:,:)
-
+  !! end initiate reduced variables
   
   
-! INITIATE CORRESPONDING FORCES R_x R_y
+! INITIATE CORRESPONDING FORCES
   CALL PRFC0(PT,F1(:,:,0),F2(:,:,0),PD,HX,HY,IP,IPS,GH1,GH2,EP,N,M)
 
   DO J=1,M
@@ -680,6 +765,7 @@ endif
 
       DO J=1,DP_relax
         
+        !write(*,*) Relaxation, QRelax_str
         DO I=1,N
         F1(I,J,0)=F1(I,J,0)+COR(I,J)*QY(I,J)+E1(I,J,0) -DT_52*Relax_M(J)*(QX(I,J)-QX_REL(I,J))
         F2(I,J,0)=F2(I,J,0)-COR(I,J)*QX(I,J)+E2(I,J,0) -DT_52*Relax_M(J)*(QY(I,J)-QY_REL(I,J))
@@ -688,11 +774,15 @@ endif
 
       DO J=M+1-DP_relax,M
        
+        !write(*,*) Relaxation, QRelax_str
         DO I=1,N
         F1(I,J,0)=F1(I,J,0)+COR(I,J)*QY(I,J)+E1(I,J,0) -DT_52*Relax_M(J)*(QX(I,J)-QX_REL(I,J))
         F2(I,J,0)=F2(I,J,0)-COR(I,J)*QX(I,J)+E2(I,J,0) -DT_52*Relax_M(J)*(QY(I,J)-QY_REL(I,J))
         enddo
       enddo
+
+
+
   endif
 
 
@@ -704,10 +794,14 @@ ELSE
   end do
 ENDIF
 
-!! model diagnostics
 CALL DIAGNOS(QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:),PD_HP,&
                  & PT,HX,HY,IP,S,TIME,DX,DY,DT, SUM0,SUM1, &
                  & KT,N,M,0, NITER,NITSM,ICOUNT,ERROR, sum_time, sum_lp_time)
+
+
+      ! plot not yet finished
+!CALL PLOT(PT, P0, U(:,:,0), V(:,:,0),HX,HY,N,M,IRHW)
+
 
 ! CLOSE INITIAL CONDITIONS *************************************
 
@@ -728,7 +822,11 @@ IF(IANAL.EQ.0) THEN
     Call DIVER(D_Adv(:,:),U(:,:,1),V(:,:,1),HX,HY,S,N,M,IP,1)
 
     Exit_Cond=maxval(ABS(D_Adv(:,:)))
+    !do J=1,M
+    !  write(*,*) J, maxval(ABS(D_Adv(:,J)))*D0*G_52*DT_52
+    !enddo
     Exit_Cond=2.0d0*Exit_Cond*D0*G_52*DT_52
+    !write(*,*) 'Exit_Cond', Exit_Cond
 
   !endif 
 
@@ -771,6 +869,8 @@ IF(IANAL.EQ.0) THEN
 
     CALL DIVER(F1(:,:,1),U(:,:,1),V(:,:,1),HX,HY,S,N,M,IP,1)
 
+
+!endif
     DO J=1,M
       DO I=1,N
         F1(I,J,1)=PD(I,J)+P0(I,J)-rpe_05*F1(I,J,1)
@@ -798,11 +898,50 @@ IF(IANAL.EQ.0) THEN
       end do
     end if
 
+    
+    !     CALL MPDATA(UA,VA,PC,S,N,M,IORD,ISOR,NONOS,IDIV, 1)
 
-       !! MPDATA for explicit computation of Momenta
+    IF(ISGNSPL.EQ.0) THEN
+     ! CALL MPDATT(UA,VA,QX,S,N,M,IORD,ISOR,NONOS,IDIV, 1, IP, QX_T, codesign)
+    !! JA change to make it equivalent to explicit
       CALL MPDATT(UA,VA,QX,S,N,M,IORD,ISOR,NONOS,IDIV,-1, IP, QX_T, codesignQ)
+    !! JA change end
       CALL MPDATT(UA,VA,QY,S,N,M,IORD,ISOR,NONOS,IDIV,-1, IP, QY_T, codesignQ)
+      
+      
+!        IF (.not. codesign) then
+!       
+!       DO J=1,1
+!         DO I=1,N
+!           write(*,*)  'QX', I,J, -QX_HP(I,J)+ QX(I,J)
+!           write(*,*) 'QY', I,J, -QY_HP(I,J)+ QY(I,J)
+!         end do
+!         read(*,*)
+!       end do
+! 
+!     
+! 
+!    
+!     else
+!     
+!       DO J=1,1
+!         DO I=1,N
+!           write(*,*) 'QX', I,J,  QX_T(I,J)
+!           write(*,*) 'QY',  I,J,  QY_T(I,J)
+! 
+!         end do
+!         read(*,*)
+!       end do
+!       
+! 
+! 
+!     end if  
+      
+      
+    ELSE
 
+
+    ENDIF
 
 !--->                CORIOLIS AND METRIC FORCES
     DO J=1,M
@@ -812,6 +951,8 @@ IF(IANAL.EQ.0) THEN
       end do   
    end do
    
+   
+   !!! splitting the tendencies from coriolis term seems difficult => splitting up loop 
     IF (codesignQ) then
       DO J=1,M
         DO I=1,N
@@ -835,7 +976,7 @@ IF(IANAL.EQ.0) THEN
         end do
       end do
   else
-     !! bring in possible relaxation
+     !! bring in relaxation
       DO J=1,DP_relax
        
         DO I=1,N
@@ -899,13 +1040,13 @@ IF(IANAL.EQ.0) THEN
 
           QX(I,J)=QX(I,J)*GC1
           QY(I,J)=QY(I,J)*GC2
-
+!          write(*,*) 'non-codes', I, J, QX(I,J), QY(I,J)
         end do
-
+!        read(*,*)
       end do
    
    
-    elseif (codesignQ) then 
+    elseif (codesignQ) then !!! if codesignQ
     
        DO J=1,M
         DO I=1,N
@@ -916,6 +1057,7 @@ IF(IANAL.EQ.0) THEN
         end do
       end do
       
+     !! corriolis in high precision for consistency in codesign
      DO J=1,M
        DO I=1,N
 
@@ -940,6 +1082,7 @@ IF(IANAL.EQ.0) THEN
             QX_T(I,J)= rpe_0
             QY_T(I,J)= rpe_0
         end do
+!         read(*,*)
       end do
     
 
@@ -971,12 +1114,24 @@ IF(IANAL.EQ.0) THEN
   
     CALL PRFORC(PT,E1(:,:,0),E2(:,:,0),PD,F2(:,:,1), &
             &   F1(:,:,0),F2(:,:,0),HX,HY,COR,N,M,IP,GC1,GC2,0,0)
+   
+  ! end gcrtest1
 
+! COMPUTE FIRST GUESS FROM ADVECTION
 
-! COMPUTE ELLIPTIC EQUATION WITH Conjugate Residual SCHEME
+!     DO 145 I=1,NM
+! 145 PT(I,1)=(PC(I,1)+P0(I,1))*G
+! COMPUTE ELLIPTIC EQUATION WITH Conjugate Residual? SCHEME
 
-  !call write_MLfields(PT, KT, N, M, EXP_NAME, 'H_in')
-  !call write_MLfields(F1(:,:,1), KT, N, M, EXP_NAME, 'RHS')
+If (ID_PREC==0) then
+    CALL  GCR(PT,F1(:,:,0),F2(:,:,0),HX,HY,S,F1(:,:,1),F2(:,:,1), &
+       &      PD(:,:),E1(:,:,0),E2(:,:,0),COR,IP, &
+       &      U(:,:,0),U(:,:,1),V(:,:,0),V(:,:,1),N,M,GC1,GC2,  &
+       &      niter,nitsm,icount,error, PD_T ,sum_time ,.FALSE., save_time,&
+       &      TIME, codesignQ, IRHW, X, Y, EXP_NAME, iprint )
+else
+  call write_MLfields(PT, KT, N, M, EXP_NAME, 'H_in')
+  call write_MLfields(F1(:,:,1), KT, N, M, EXP_NAME, 'RHS')
 
 
   CALL  GCR_PRE(PT,F1(:,:,0),F2(:,:,0),HX,HY,S,F1(:,:,1),F2(:,:,1), &
@@ -985,22 +1140,38 @@ IF(IANAL.EQ.0) THEN
            &    MGH1IHX, MGH2IHY, AC, BC, AD, BD,  &
   &      niter,nitsm,icount,error, PD_T, sum_time, sum_lp_time, ID_PREC,.FALSE., save_time,&
        &      TIME, codesignQ, IRHW, X, Y, Exit_Cond,               &
-       &  EXP_NAME, iprint, num_of_bits, DP_Depth, KT, Layer1, Layer2)
+       &  EXP_NAME, iprint, num_of_bits, DP_Depth, KT)
 
- If(save_time) exit  ! if iteration counter reached 100 once, exit simulation
+
+end if   
+
+ If(save_time) exit  ! if iteration counter has reached 100 once, jump to next set of bits
   
    
 
     
    IF ( codesignD) then
-         
+    
+      !!! only for testing
+    
+     !  DO J=1,M
+     !    DO I=1,N
+     !        PD(I,J)= PD_HP(I,J)
+     !
+     !    end do
+     !  end do
+       
+      !!! end only for testing
+      
       DO J=1,M
         DO I=1,N
             PT_HP(I,J)= PT_HP(I,J)+ PD_T(I,J)
 
         end do
-      end do 
+      end do
+      
 
+      
       DO J=1,M
         DO I=1,N
             PT(I,J)= PT_HP(I,J)
@@ -1010,6 +1181,7 @@ IF(IANAL.EQ.0) THEN
 
      end if
    
+       
   If(.not. QRelax) then     
     CALL PRFORC(PT,F1(:,:,0),F2(:,:,0),PD,F2(:,:,1), &
       &      E1(:,:,0),E2(:,:,0),HX,HY,COR,N,M,IP,GC1,GC2,1,1)
@@ -1019,8 +1191,10 @@ IF(IANAL.EQ.0) THEN
   endif
 
        
-   !!! update PD, because PRFORC needs an intermediate value of PD
-    IF (.not. codesignD) then   
+              !!! update PD, because PRFORC needs an intermediate value of PD
+    IF (.not. codesignD) then
+    
+   
       
       DO J=1,M
         DO I=1,N
@@ -1051,6 +1225,7 @@ IF(IANAL.EQ.0) THEN
       
       DO J=1,M
         DO I=1,N
+            !PT(I,J)= (PD_HP(I,J)+P0(I,J))*G
             PD(I,J)= PD_HP(I,J)
             PD_T(I,J)= rpe_0
         end do
@@ -1058,7 +1233,7 @@ IF(IANAL.EQ.0) THEN
     
 
      end if
-      ! call write_MLfields(PT, KT, N, M, EXP_NAME, 'H_out')    
+       call write_MLfields(PT, KT, N, M, EXP_NAME, 'H_out')    
      
 ! COMPUTE SOLUTION'S UPDATE
 
@@ -1080,9 +1255,10 @@ IF(IANAL.EQ.0) THEN
       end do
     end if
    
+!! try continuous relaxation
  
 If(QRelax) then
-!! update relaxation
+!If(IRHW.EQ.1) then
 
 do J=1,M
  do I=1+stencil,N-stencil
@@ -1092,7 +1268,7 @@ do J=1,M
 enddo
 do J=1,M
  do I=2,stencil
-
+  !write(*,*) 'test1', I, J
   ueber=2-(I-stencil)
   QX_REL(I,J)=(SUM(QX(N-ueber:N,J))+SUM(QX(2+1:I+stencil,J)))/(1.0d0+2.0d0*stencil)
   QY_REL(I,J)=(SUM(QY(N-ueber:N,J))+SUM(QY(2+1:I+stencil,J)))/(1.0d0+2.0d0*stencil)
@@ -1100,7 +1276,7 @@ do J=1,M
 enddo
 do J=1,M
  do I=N-stencil+1,N-1
-
+  !write(*,*) 'test2', I, J
   ueber=(I+stencil)-(N-1)
   QX_REL(I,J)=(SUM(QX(I-stencil:N-1,J))+SUM(QX(2:1+ueber,J)))/(1.0d0+2.0d0*stencil)
   QY_REL(I,J)=(SUM(QY(I-stencil:N-1,J))+SUM(QY(2:1+ueber,J)))/(1.0d0+2.0d0*stencil)
@@ -1108,6 +1284,15 @@ do J=1,M
 enddo
 CALL XBC(QX_REL,N,M)
 CALL XBC(QY_REL,N,M)
+!else
+!do J=1,M
+! do I=2,N-1
+!  QX_REL(I,J)=SUM(QX(I-1:I+1,J))/(3.0d0)
+!  QY_REL(I,J)=SUM(QY(I-1:I+1,J))/(3.0d0)
+! enddo
+!enddo
+!CALL XBC(QX_REL,N,M)
+!CALL XBC(QY_REL,N,M)
 
 endif
     
@@ -1147,6 +1332,7 @@ endif
 
       DO J=1,DP_relax
       
+        !write(*,*) Relaxation, QRelax_str
         DO I=1,N
         F1(I,J,0)=F1(I,J,0)+COR(I,J)*QY(I,J)+E1(I,J,0) -DT_52*Relax_M(J)*(QX(I,J)-QX_REL(I,J))
         F2(I,J,0)=F2(I,J,0)-COR(I,J)*QX(I,J)+E2(I,J,0) -DT_52*Relax_M(J)*(QY(I,J)-QY_REL(I,J))
@@ -1155,6 +1341,7 @@ endif
 
       DO J=M+1-DP_relax,M
     
+        !write(*,*) Relaxation, QRelax_str
         DO I=1,N
         F1(I,J,0)=F1(I,J,0)+COR(I,J)*QY(I,J)+E1(I,J,0) -DT_52*Relax_M(J)*(QX(I,J)-QX_REL(I,J))
         F2(I,J,0)=F2(I,J,0)-COR(I,J)*QX(I,J)+E2(I,J,0) -DT_52*Relax_M(J)*(QY(I,J)-QY_REL(I,J))
@@ -1172,6 +1359,38 @@ endif
         V(I,J,0)=QY(I,J)/PD(I,J)
       end do
     end do
+! If(IRHW==2) then
+! ! calculate diffusion   
+!    DO J=1,M
+!      DO I=1,N
+!        U(I,J,0)=QX(I,J)/PD(I,J)
+!        V(I,J,0)=QY(I,J)/PD(I,J)
+!      end do
+!    end do
+!    ! U grad
+!    call prforc(U,Velfx,Velfy,PD,F2(:,:,1), &
+!       &      E1(:,:,0),E2(:,:,0),HX,HY,COR,N,M,IP,GC1,GC2,0,0)
+!
+!    ! U div
+!    call diver(DIFF_U,Velfx,Velfy,HX,HY,S,N,M,IP,-1)
+!    ! V grad
+!    call prforc(V,Velfx,Velfy,PD,F2(:,:,1), &
+!       &      E1(:,:,0),E2(:,:,0),HX,HY,COR,N,M,IP,GC1,GC2,0,0)
+!
+!    ! V div
+!    call diver(DIFF_V,Velfx,Velfy,HX,HY,S,N,M,IP,-1)
+!
+!    mue=3*10**6
+!    DO J=1,M
+!      DO I=1,N
+!        U(I,J,0)=U(I,J,0)+mue*DIFF_U(I,J)
+!        QX(I,J)= U(I,J,0)*PD(I,J)
+!
+!        V(I,J,0)=  V(I,J,0)+mue*DIFF_V(I,J)
+!        QY(I,J)= V(I,J,0)*PD(I,J)
+!      end do
+!    end do
+!   endif
 
 !COMPUTE OUTPUTED FIELDS ****************************************
 
@@ -1201,13 +1420,25 @@ endif
         end do
       end do
       
-   
+      
+      
+!       DO J=1,1
+!         DO I=1,N
+!           write(*,*) 'QX_fin code', I,J, UA_HP(I,J)- QX_T(I,J)- QX_HP(I,J)
+!           write(*,*) 'QY_fin code', I,J, VA_HP(I,J)- QY_T(I,J)- QY_HP(I,J)
+! 
+!         end do
+!         read(*,*)
+!       end do
+      
+      
       DO J=1,M
         DO I=1,N
 
             QX_T(I,J)= rpe_0
             QY_T(I,J)= rpe_0
         end do
+!         read(*,*)
       end do
     
 
@@ -1218,11 +1449,13 @@ endif
       CALL DIAGNOS(QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:),PD_HP,&
                  & PT,HX,HY,IP,S,TIME,DX,DY,DT, SUM0,SUM1, &
                  & KT,N,M,1, NITER,NITSM,ICOUNT,ERROR, sum_time, sum_lp_time)
+      ! plot not yet finished
       call write_perf_markers (PD_HP(:,:)+P0(:,:),QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:)&
                   &, TIME, codesignQ, codesignD, IRHW, X, Y, N, M, &
                   & num_of_bits,NITER,NITSM,ICOUNT, sum_time, sum_lp_time)
       call write_fields(PD_HP(:,:)+P0(:,:),QX_HP(:,:)/PD_HP(:,:),QY_HP(:,:)/PD_HP(:,:)&
                   &, TIME, codesignQ, codesignD, IRHW, X, Y, N, M, num_of_bits, ID_prec, EXP_NAME)
+      !CALL PLOT(PT, P0, U(:,:,0), V(:,:,0),HX,HY,N,M,IRHW)
     end if
 
   end do
@@ -1247,7 +1480,7 @@ IF(IANAL.EQ.1) THEN
   end do
 ENDIF
 
-endif !!
+endif !!spare bits from 20 to 50
 end do !! end loop over all number of bits
 
 call close_perf_markers
@@ -1315,6 +1548,13 @@ If (mountain) then
 
   end do
 
+!  do j=1,m
+!    do i=1,n
+!      dist= sqrt( (x(i)-x_c)**2 + (y(j)-y_c)**2) 
+!      h0(i,j)=0.4d0*hs0*(1.0d0/(sigma*sqrt(2*pi))*exp(-0.5d0*(dist/sigma)**2) )
+!    end do
+!  end do
+
 end if
 
 end subroutine
@@ -1327,32 +1567,25 @@ use implicit_functions_DP
 implicit none
 
 double precision :: PT(N,M)
-double precision :: U(N,M),V(N,M),COR(N,M),X(N),Y(M), F0, beta, H00, R, Q, pert
-INTEGER :: N, M, seed(N*M*2)
+double precision :: U(N,M),V(N,M),COR(N,M),X(N),Y(M), F0, beta, H00, R, Q
+INTEGER :: N, M
 
 
 INTEGER :: I, J
  
-call random_seed(put=seed)
+
 DO J=1,M
   DO I=1,N
     COR(I,J)=F0*(-COS(X(I))*COS(Y(J))*SIN(BETA)+SIN(Y(J))*COS(BETA))
     PT(I,J)=H00-R**2.0d0*(F0+Q)*0.5d0*Q*  &
       &     (-COS(X(I))*COS(Y(J))*SIN(BETA)+SIN(Y(J))*COS(BETA))**2
-    !CALL RANDOM_NUMBER(pert)
-    !PT(I,J)=PT(I,J)+PT(I,J)*(pert-0.5d0)*0.01
   end do
 end do
 
 DO J=1,M
   DO I=1,N
     U(I,J)=Q*(COS(BETA)+TAN(Y(J))*COS(X(I))*SIN(BETA))*R*COS(Y(J))
-    CALL RANDOM_NUMBER(pert)
-    U(I,J)=U(I,J)+U(I,J)*(pert-0.5d0)*0.05
-
     V(I,J)=-Q*SIN(X(I))*SIN(BETA)*R
-    CALL RANDOM_NUMBER(pert)
-    V(I,J)=V(I,J)+V(I,J)*(pert-0.5d0)*0.05
   end do
 end do
       write (6,*)  'initzon called'
@@ -1377,6 +1610,7 @@ OM=7.848E-6
 K=7.848E-6
 R=4
 PH0= 78.4E3
+!   DATA OM,K,R,PH0/7.848E-6,7.848E-6,4,0./
 
 DO J=1,M
   TH=Y(J)
@@ -1442,7 +1676,7 @@ CALL XBC(F2,N,M)
 END SUBROUTINE
 
 
-SUBROUTINE PRFORC( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,            &  !! pressure
+SUBROUTINE PRFORC( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,            &
      &            N,M,IP,GC1,GC2,NOR,IRS)
 use implicit_functions_DP
 
@@ -1479,6 +1713,15 @@ CALL XBC(F1,N,M)
 CALL XBC(F2,N,M)
 
 IF(NOR.EQ.1) THEN
+!  NM=N*M
+  
+!  DO I=1,NM
+!    UTILD=F1(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E1(I,1)
+!    VTILD=F2(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E2(I,1)
+!    GMM=.5*COR(I,1)
+!    F1(I,1)=(UTILD+GMM*VTILD)/(1.+GMM**2)*GH1
+!    F2(I,1)=(VTILD-GMM*UTILD)/(1.+GMM**2)*GH2
+!  end do
   DO J=1,M
     DO I=1,N
       UTILD=F1(I,J)*(P0(I,J)-PB(I,J))+(P(I,J)-IRS*P0(I,J))*E1(I,J)
@@ -1495,7 +1738,7 @@ ENDIF
 END SUBROUTINE
 
 
-SUBROUTINE PRFORC_FIN( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,       &   !! pressure force with relaxation
+SUBROUTINE PRFORC_FIN( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,       &
      &            N,M,IP,GC1,GC2,Relax_M, DT_52, NOR,IRS)
 use implicit_functions_DP
 
@@ -1533,7 +1776,15 @@ CALL XBC(F1,N,M)
 CALL XBC(F2,N,M)
 
 IF(NOR.EQ.1) THEN
-
+!  NM=N*M
+  
+!  DO I=1,NM
+!    UTILD=F1(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E1(I,1)
+!    VTILD=F2(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E2(I,1)
+!    GMM=.5*COR(I,1)
+!    F1(I,1)=(UTILD+GMM*VTILD)/(1.+GMM**2)*GH1
+!    F2(I,1)=(VTILD-GMM*UTILD)/(1.+GMM**2)*GH2
+!  end do
   DO J=1,M
     DO I=1,N
       UTILD=F1(I,J)*(P0(I,J)-PB(I,J))+(P(I,J)-IRS*P0(I,J))*E1(I,J)
@@ -1552,8 +1803,8 @@ END SUBROUTINE
 
 
 
-SUBROUTINE DIVER(F, U,  V, HX,HY,S, N, M,IP,IFLG)  !! divergence operator
-
+SUBROUTINE DIVER(F, U,  V, HX,HY,S, N, M,IP,IFLG)
+!!         (r,pfx,pfy,hx,hy,s,n1,n2,ip,-1)
 use implicit_functions_DP
 
  implicit none
@@ -1572,12 +1823,16 @@ DO J=2,M-1
   end do
 end do    
 
+! original
 DO I=2,N-1
   F(I,1)= HY(I+1,1)*U(I+1,1)-HY(I-1,1)*U(I-1,1) &
       &  +(HX(I,2)*V(I,2)+HX(I,1)*V(I,1))
   F(I,M)= HY(I+1,M)*U(I+1,M)-HY(I-1,M)*U(I-1,M)  &
       &  -(HX(I,M)*V(I,M)+HX(I,M-1)*V(I,M-1))
 end do
+! end original
+
+
 
 DO J=1,M
   DO I=2,N-1
@@ -1593,8 +1848,8 @@ end do
 END SUBROUTINE
 
 
-SUBROUTINE PRFORC_depth( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,            &  !! pressure
-     &            N,M,IP,GC1,GC2,NOR,IRS, num_of_bits, DP_Depth)      !! same as PRFORC
+SUBROUTINE PRFORC_depth( P,F1,F2,PB,P0,E1,E2,HX,HY,COR,            &
+     &            N,M,IP,GC1,GC2,NOR,IRS, num_of_bits, DP_Depth)
 use implicit_functions_DP
 
 implicit none
@@ -1668,8 +1923,29 @@ endif
 
 
 IF(NOR.EQ.1) THEN
-
+!  NM=N*M
   
+!  DO I=1,NM
+!    UTILD=F1(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E1(I,1)
+!    VTILD=F2(I,1)*(P0(I,1)-PB(I,1))+(P(I,1)-IRS*P0(I,1))*E2(I,1)
+!    GMM=.5*COR(I,1)
+!    F1(I,1)=(UTILD+GMM*VTILD)/(1.+GMM**2)*GH1
+!    F2(I,1)=(VTILD-GMM*UTILD)/(1.+GMM**2)*GH2
+!  end do
+
+!orig
+!  DO J=1,M
+!    DO I=1,N
+!      UTILD=F1(I,J)*(P0(I,J)-PB(I,J))+(P(I,J)-IRS*P0(I,J))*E1(I,J)
+!      VTILD=F2(I,J)*(P0(I,J)-PB(I,J))+(P(I,J)-IRS*P0(I,J))*E2(I,J)
+!      GMM=rpe_05*COR(I,J)
+!      F1(I,J)=(UTILD+GMM*VTILD)/(rpe_1+GMM**2)*GH1
+!      F2(I,J)=(VTILD-GMM*UTILD)/(rpe_1+GMM**2)*GH2
+!    end do
+!  end do
+!end orig
+
+  !! rewritten to change precision at poles as desired    
       DO J=1+DP_Depth,M-DP_Depth
         DO I=1,N
       UTILD=F1(I,J)*(P0(I,J)-PB(I,J))+(P(I,J)-IRS*P0(I,J))*E1(I,J)
@@ -1710,8 +1986,8 @@ ENDIF
 END SUBROUTINE
 
 
-SUBROUTINE DIVER_depth(F, U,  V, HX,HY,S, N, M,IP,IFLG, num_of_bits, DP_Depth)  !! divergence operator
-                                                                                !! same as DIVER
+SUBROUTINE DIVER_depth(F, U,  V, HX,HY,S, N, M,IP,IFLG, num_of_bits, DP_Depth)
+!!         (r,pfx,pfy,hx,hy,s,n1,n2,ip,-1)
 use implicit_functions_DP
 
  implicit none
@@ -1724,6 +2000,19 @@ INTEGER :: N, M, IFLG, DP_Depth, num_of_bits
 
 INTEGER:: I, J
 
+!DO J=2,M-1
+!  DO I=2,N-1
+!    F(I,J)= HY(I+1,J)*U(I+1,J)-HY(I-1,J)*U(I-1,J)        & 
+!        &  +HX(I,J+1)*V(I,J+1)-HX(I,J-1)*V(I,J-1)
+!  end do
+!end do    
+
+!DO I=2,N-1
+!  F(I,1)= HY(I+1,1)*U(I+1,1)-HY(I-1,1)*U(I-1,1) &
+!      &  +(HX(I,2)*V(I,2)+HX(I,1)*V(I,1))
+!  F(I,M)= HY(I+1,M)*U(I+1,M)-HY(I-1,M)*U(I-1,M)  &
+!      &  -(HX(I,M)*V(I,M)+HX(I,M-1)*V(I,M-1))
+!end do
 
 If (DP_Depth<=0) then
 DO J=2,M-1
@@ -1775,6 +2064,14 @@ else
 endif
 
 
+
+!DO J=1,M
+!  DO I=2,N-1
+!    F(I,J)=rpe_05*IFLG*F(I,J)/S(I,J)
+!  end do
+!end do
+
+  !! rewritten to change precision at poles as desired    
       DO J=1+DP_Depth,M-DP_Depth
         DO I=2,N-1
           F(I,J)=rpe_05*IFLG*F(I,J)/S(I,J)
@@ -1796,6 +2093,9 @@ DO J=1,M
   F(1,J)=F(N-1,J)
   F(N,J)=F(2  ,J)
 end do
+
+   !! end of rewrite
+
 
 
 
@@ -1842,7 +2142,7 @@ DO J=1,M
 ENDDO
 end subroutine
 
-SUBROUTINE LAP0_depth(A11,A12,A21,A22,B11,B22,  &              !! coefficients of the linear operator
+SUBROUTINE LAP0_depth(A11,A12,A21,A22,B11,B22,  &
            &    PB,P0,E1,E2,HX,HY,COR,N,M,GC1,GC2, &
            &    MGH1IHX, MGH2IHY, AC, BC, AD, BD,  &
            & DP_Depth)
@@ -1869,7 +2169,7 @@ DO J=1+DP_Depth,M-DP_Depth
   MGH2IHY(J)=MGH2IHY(J)
 end do
 
-
+  !! rewritten to change precision at poles as desired    
 
       DO J=1+DP_Depth,M-DP_Depth
         DO I=1,N
@@ -1944,7 +2244,7 @@ END SUBROUTINE
 
 
 SUBROUTINE LAPL_depth(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP, num_of_bits, DP_Depth)
-use implicit_functions_DP                        !! apply linear Operator to field P
+use implicit_functions_DP
 
 implicit none
 double precision :: P(N,M),F(N,M),A11(N,M),A12(N,M),A21(N,M),A22(N,M),  &
@@ -2011,10 +2311,22 @@ CALL XBC(V,N,M)
 
 endif
 
-  
+
+
+
+!DO J=1,M
+!  DO I=1,N
+!    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
+!    VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
+!    U(I,J)=UTIL
+!    V(I,J)=VTIL
+!  ENDDO
+!ENDDO
+
+  !! rewritten to change precision at poles as desired    
       DO J=1+DP_Depth,M-DP_Depth
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J)) 
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2023,7 +2335,7 @@ endif
 
       DO J=1,DP_Depth
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2032,7 +2344,7 @@ endif
 
       DO J=M+1-DP_Depth,M
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2040,6 +2352,12 @@ endif
       enddo
 CALL XBC(U,N,M)
 CALL XBC(V,N,M)
+
+   !! end of rewrite
+
+
+
+ 
 
 
 
@@ -2084,13 +2402,22 @@ else
   CALL XBC(F,N,M)
 
 endif
+
+! end original
+
+!DO I=2,N-1
+!  F(I,1)= (U(I+1,1)-U(I-1,1)+(V(I,2)))/S(I,1)
+!  F(I,M)= (U(I+1,M)-U(I-1,M)-(V(I,M-1)))/S(I,M)
+!ENDDO
+
+
 
 
 END SUBROUTINE
 
 
 SUBROUTINE LAPLfirst_depth(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP, num_of_bits, DP_Depth)
-use implicit_functions_DP              !! apply linear Operator to field P: first iteration
+use implicit_functions_DP
 
 implicit none
 double precision :: P(N,M),F(N,M),A11(N,M),A12(N,M),A21(N,M),A22(N,M),  &
@@ -2160,9 +2487,20 @@ endif
 
 
 
+
+!DO J=1,M
+!  DO I=1,N
+!    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
+!    VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
+!    U(I,J)=UTIL
+!    V(I,J)=VTIL
+!  ENDDO
+!ENDDO
+
+  !! rewritten to change precision at poles as desired    
       DO J=1+DP_Depth,M-DP_Depth
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J))  
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J))  ! B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P0(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2171,7 +2509,7 @@ endif
 
       DO J=1,DP_Depth
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J))  
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J))  ! B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P0(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2180,7 +2518,7 @@ endif
 
       DO J=M+1-DP_Depth,M
         DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J)) 
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P0(I,J))  ! B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P0(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2188,6 +2526,12 @@ endif
       enddo
 CALL XBC(U,N,M)
 CALL XBC(V,N,M)
+
+   !! end of rewrite
+
+
+
+ 
 
 
 
@@ -2234,11 +2578,21 @@ else
 
 endif
 
+! end original
+
+!DO I=2,N-1
+!  F(I,1)= (U(I+1,1)-U(I-1,1)+(V(I,2)))/S(I,1)
+!  F(I,M)= (U(I+1,M)-U(I-1,M)-(V(I,M-1)))/S(I,M)
+!ENDDO
+
+
+
+
 END SUBROUTINE
 
 
 
-SUBROUTINE LAPL(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP)   !! apply linear Operator to field P
+SUBROUTINE LAPL(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP)
 use implicit_functions_DP
 
 implicit none
@@ -2272,7 +2626,7 @@ CALL XBC(V,N,M)
 
 DO J=1,M
   DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J)) 
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J))  ! why only B11*P and not B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2301,8 +2655,7 @@ CALL XBC(F,N,M)
 
 END SUBROUTINE
 
-SUBROUTINE LAPLfirst(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP) !! apply linear Operator to field P
-                                                                  !! first iteration
+SUBROUTINE LAPLfirst(P,F,A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP)
 use implicit_functions_DP
 
 implicit none
@@ -2336,7 +2689,7 @@ CALL XBC(V,N,M)
 
 DO J=1,M
   DO I=1,N
-    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J)-P0(I,J)) 
+    UTIL=U(I,J)*A11(I,J)+A12(I,J)*V(I,J)+B11(I,J)*(P(I,J)-P0(I,J))  ! why only B11*P and not B11*(P-P0)
     VTIL=V(I,J)*A21(I,J)+A22(I,J)*U(I,J)+B22(I,J)*(P(I,J)-P0(I,J))
     U(I,J)=UTIL
     V(I,J)=VTIL
@@ -2365,7 +2718,301 @@ CALL XBC(F,N,M)
 
 END SUBROUTINE
 
-!! advective velocities
+
+subroutine GCR(p,pfx,pfy,hx,hy,s,b,p0,pb,e1,e2,cor,ip  &
+              & ,d,q,r,ar,n1,n2,gc1,gc2,niter,nitsm,icount,error, p_T, &
+              & sum_time, codes, save_time, &
+              & TIME, codesQ, IRHW, DX_rpe, DY_rpe, EXP_NAME, iprint )
+use implicit_functions_DP
+
+implicit none
+INTEGER, parameter :: kord=2, lord=kord-1
+
+INTEGER :: n1, n2
+
+double precision :: p(n1,n2),pfx(n1,n2),pfy(n1,n2),hx(n1,n2),hy(n1,n2),s(n1,n2), &
+     &   b(n1,n2),pb(n1,n2),p0(n1,n2),                         &
+     &   e1(n1,n2),e2(n1,n2),cor(n1,n2),d(n1,n2),q(n1,n2),r(n1,n2),ar(n1,n2), &
+     &   p_T(n1,n2), r_HP(n1,n2)
+INTEGER :: IP(n1)
+double precision :: GC1, GC2,error, epa
+
+double precision :: res_lats0(n2), res_lats(n2)
+double precision :: start, finish, sum_time
+INTEGER :: niter,nitsm,icount
+INTEGER :: iprint
+double precision :: x(n1,n2,lord), ax(n1,n2,lord),ax2(lord),axar(lord),del(lord), &
+     & a11(n1,n2),a12(n1,n2),a21(n1,n2),a22(n1,n2),b11(n1,n2),b22(n1,n2)
+double precision :: err0, rax, beta, errn, x2, y2
+INTEGER :: itr, J, I, l, ll, i1, it
+double precision :: eps
+
+double precision :: TIME, DX_rpe(n1), DY_rpe(n2)
+ character(len=105) :: EXP_NAME
+LOGICAL :: codes, codesQ, save_time
+
+INTEGER :: IRHW 
+
+! if (codes) then
+
+! eps=1.e-7 tested this, did not change anything
+eps=1.e-3  !! original
+itr=100
+
+epa= 10**8*tiny(epa) !1.e-30
+
+call cpu_time(start)
+
+DO J=1,n2
+  DO I=1,n1
+    r(I,J)=rpe_0
+    ar(I,J)=rpe_0
+  enddo
+enddo
+
+do l=1,lord
+  DO J=1,n2
+    DO I=1,n1
+      x(I,J,l)=rpe_0
+      ax(I,J,l)=rpe_0
+    enddo
+  enddo
+enddo
+
+! gcrtest2             test whether the initial calculation of r is a problem
+call prforc(p,pfx,pfy,pb,p0,e1,e2,hx,hy,cor,n1,n2,ip,gc1,gc2,1,1)
+call diver(r,pfx,pfy,hx,hy,s,n1,n2,ip,-1)
+
+err0=0.0d0
+
+DO J=1,n2
+  DO I=1,n1
+    ! write(*,*) J, I,  r(I,J)
+!! JA BEGIn: taken out    
+!     if (.not. codes) then
+      r_HP(I,J)=rpe_05*r(I,J)-(p(I,J)-b(I,J))
+      r(I,J) = r_HP(I,J)
+      x(I,J,1)=r(I,J)
+      err0=err0+x(I,J,1)*x(I,J,1)
+!! JA replaced by
+!     else
+!       r(I,J)=rpe_05*r(I,J)-(p(I,J)-b(I,J))
+!       x(I,J,1)=r(I,J)
+!       err0=err0+x(I,J,1)*x(I,J,1)
+!     end if
+!! JA END
+    ! write(*,*) J, I,  r(I,J), p(I,J), b(I,J)
+!! JA replaced r by r_HP
+
+!! JA END
+  enddo
+  !read(*,*)
+enddo
+! 
+if (iprint==1) then
+  call write_residual(r,eps, 0, TIME, codesQ, codes, IRHW, DX_rpe, DY_rpe, n1, n2,&
+                 &  52, 0 ,EXP_NAME)
+end if
+! end gcrtest2
+
+   ! write(*,*) 'Err0: ', err0
+!    DO J=1,n2
+!      res_lats0(J)=rpe_0
+!      DO I=1,n1
+!   
+!        res_lats0(J)=res_lats0(J)+r(I,J)*r(I,J)
+!    
+!      enddo
+!      write(*,*) J, ( sqrt(r(I,J)*r(I,J)/res_lats0(J)%val), I=1,n1)
+!read(*,*)
+!    enddo
+
+! gcrtest2 coefficient calculation?   
+call lap0(a11,a12,a21,a22,b11,b22,                   &
+     &          pb,p0,e1,e2,hx,hy,cor,n1,n2,gc1,gc2)
+
+!end gcrtest2
+
+call lapl(x(:,:,1),ax(:,:,1),a11,a12,a21,a22,b11,b22, p0,   &
+     &                           pfx,pfy,s,n1,n2,ip)
+
+DO J=1,n2
+  DO I=1,n1
+    ax(I,J,1)=rpe_05*ax(I,J,1)-x(I,J,1)
+  enddo
+enddo
+
+do it=1,itr
+ If (it==100) then
+   save_time=.true.
+   exit
+ endif
+  do l=1,lord
+  
+
+    ax2(l)=rpe_0
+    rax=rpe_0
+! gcrtest4             test whether beta, the residual update and the exit condition should be PD
+    DO J=1,n2
+      DO I=1,n1
+        rax=rax+r(I,J)*ax(I,J,l)
+        ax2(l)=ax2(l)+ax(I,J,l)*ax(I,J,l)
+      enddo
+    enddo
+
+    ax2(l)=max(epa,ax2(l))
+    beta=-rax/ax2(l)
+    errn=0.0d0
+
+
+    DO J=1,n2
+      DO I=1,n1
+         p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+        !if (.not. codes) then
+          p(I,J)  =p(I,J)   +beta* x(I,J,l)   
+          r_HP(I,J)  =r_HP(I,J)   +beta*ax(I,J,l)
+          r(I,J) = r_HP(I,J)
+          errn=errn+r(I,J)*r(I,J)
+        !else
+        !  p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+        !  r(I,J)  =r(I,J)   +beta*ax(I,J,l)  
+
+        !  errn=errn+r(I,J)*r(I,J)
+        ! end if     
+   
+      enddo
+    enddo
+    if (iprint==1) then
+      call write_residual(r,eps, it, TIME, codesQ, codes, IRHW,  DX_rpe, DY_rpe, &
+                       & n1, n2, 52, 0 ,EXP_NAME)
+    endif
+! end gcrtest4
+
+!    DO J=1,n2
+!      res_lats(J)=rpe_0
+!      DO I=1,n1
+!   
+!        res_lats(J)=res_lats(J)+r(I,J)*r(I,J)
+!    
+!      enddo
+!      write(*,*) J, ( sqrt(r(I,J)*r(I,J)/res_lats0(J)%val), I=1,n1)
+!read(*,*)
+!    enddo
+
+   ! write(*,*) ( sqrt(res_lats(J)%val/res_lats0(J)%val), J=1,n2)
+   ! write(*,*) 'Error: gcr', error, errn
+   ! write(*,*) 'error .lt. eps', error .lt. eps, eps
+   ! read(*,*)
+   ! write(*,*) 'Error: ', error, errn
+   ! write(*,*) 'error .lt. eps', error .lt. eps, eps
+    error=sqrt(errn/err0)
+
+    if((error .lt. eps)) exit ! .and. (it>120)) exit
+    
+    !! call precon(r,qr,ar,pfx,pfy,pfz,fd,iprc,1)
+    call lapl(r,ar,a11,a12,a21,a22,b11,b22,p0,pfx,pfy,s,n1,n2,ip)
+
+! gcrtest5             test whether alpha, p and L(p)     
+    DO J=1,n2
+      DO I=1,n1
+        ar(I,J)=rpe_05*ar(I,J)-r(I,J)
+      end do
+    enddo
+    do ll=1,l
+      axar(ll)=rpe_0
+      DO J=1,n2
+        DO I=1,n1
+          axar(ll)=axar(ll)+ax(I,J,ll)*ar(I,J)
+        enddo
+      enddo
+      del(ll)=-axar(ll)/ax2(ll)
+
+     ! del(ll)=max(del(ll),0.05)
+!if (iprint==1) then
+!   write(*,*) 'after', it, del(ll)
+!endif
+    enddo
+
+
+    if(l.lt.lord) then
+
+      DO J=1,n2
+        DO I=1,n1
+          x(I,J,l+1)= r(I,J)
+          ax(I,J,l+1)=ar(I,J)
+        enddo
+      enddo
+      do ll=1,l
+        DO J=1,n2
+          DO I=1,n1
+            x(I,J,l+1)= x(I,J,l+1)+del(ll)* x(I,J,ll)
+            ax(I,J,l+1)=ax(I,J,l+1)+del(ll)*ax(I,J,ll)
+          enddo
+        enddo
+      enddo
+
+    else
+      
+      DO J=1,n2
+        DO I=1,n1
+          x(I,J,1)= r(I,J)+del(1)* x(I,J,1)
+          ax(I,J,1)=ar(I,J)+del(1)*ax(I,J,1)
+        enddo
+      enddo
+      
+      do ll=2,l
+        DO J=1,n2
+          DO I=1,n1
+            x(I,J,1 )= x(I,J,1)+del(ll)* x(I,J,ll)
+            x(I,J,ll)=rpe_0
+            ax(I,J,1 )=ax(I,J,1)+del(ll)*ax(I,J,ll)
+            ax(I,J,ll)=rpe_0
+          enddo
+        enddo
+      enddo
+
+    endif
+! end gcrtest5 
+ 
+  enddo
+
+  if(error.lt.eps) then! .and. (it>120)) then !! to replace the go to 200
+
+    niter=it
+    exit
+  else
+    niter = itr
+  end if
+
+end do
+!  200
+!niter=it
+call cpu_time(finish)
+
+!write(*,*) niter
+!read(*,*)
+icount=icount+1
+nitsm=nitsm+niter
+sum_time=sum_time+(finish-start)
+
+
+! if(iprint.eq.-1) then
+!   i1=int(102.4+409.6)
+!   call set(.1,.9,.3,.7,0.,2.,-0.5,0.5,1)
+!   call labmod('(f4.1)','(f4.1)',4,4,2,2,20,20,0)
+!   call periml(4,5,2,5)
+!   x2=float(n1)
+!   y2=float(n2)
+!   call set(.1,.9,.3,.7,1.,x2,1.,y2,1)
+!   call wtstr(CfuX(i1),CfuY(200),'x/Pi',3,0,0)
+!   call wtstr(CfuX(22),CfuY(i1),'y/Pi',3,90,0)
+!   !call conrec(r1,n1,n1,n2,0.,0.,0.,1,-1,-1252)
+!   call framE
+! endiF
+
+end subroutine
+
+
 
 SUBROUTINE VELPRD(U,V,F,G,PD,HX,HY,IP,N,M,A,B,EP)
 use implicit_functions_DP
@@ -2498,7 +3145,522 @@ ENDIF
 END SUBROUTINE
 
 
-!! MPDATA subroutine
+subroutine compint(u,v,n,m)
+use implicit_functions_DP
+
+implicit none
+INTEGER ::n, m
+double precision :: U(n,m),V(n,m+1)
+
+
+double precision :: apx(n,m,2),apy(n,m+1,2)
+double precision :: bt
+INTEGER :: ntr, i, j, ITR
+
+ntr=3
+bt=rpe_1
+
+do j=1,m
+  do i=1,n
+    apx(i,j,1)=u(i,j)
+  enddo
+enddo
+
+do j=1,m+1
+  do i=1,n
+    apy(i,j,1)=v(i,j)
+  enddo
+enddo
+
+DO ITR=1,ntr
+
+  call lap1(apx,n, m ,rpe_1)
+
+  do j=1,m
+    do i=1,n
+      apx(i,j,1)=apx(i,j,1)+bt*(u(i,j)-apx(i,j,2))
+    enddo
+  enddo
+
+  call lap2(apy,n,m+1,rpe_1)
+
+  do j=2,m
+    do i=1,n
+      apy(i,j,1)=apy(i,j,1)+bt*(v(i,j)-apy(i,j,2))
+    enddo
+  enddo
+
+  do i=1,n
+    apy(i, 1 ,1)=rpe_0
+    apy(i,m+1,1)=rpe_0
+  enddo
+ENDDO
+
+do j=1,m
+  do i=1,n
+    u(i,j)=apx(i,j,1)
+  enddo
+enddo
+
+do j=1,m+1
+  do i=1,n
+    v(i,j)=apy(i,j,1)
+  enddo
+enddo
+
+
+end subroutine
+
+
+subroutine lap1(hx,n,m,aa)
+use implicit_functions_DP
+
+implicit none
+INTEGER :: n, m
+double precision ::     hx(n,m,2)
+double precision :: aa
+
+INTEGER :: i, j
+
+do j=1,m
+  do i=2,n-1
+    hx(i,j,2)=rpe_025*(hx(i+1,j,1)+rpe_2*aa*hx(i,j,1)+hx(i-1,j,1))
+  enddo
+  hx(1,j,2)=hx(n-1,j,2)
+  hx(n,j,2)=hx( 2 ,j,2)
+enddo
+
+end subroutine
+
+
+subroutine lap2(hy,n,m,aa)
+use implicit_functions_DP
+
+implicit none
+INTEGER :: n, m
+double precision ::     hy(n,m,2)
+double precision :: aa
+
+INTEGER :: i, j
+
+do j=2,m-1
+  do i=1,n
+
+    hy(i,j,2)=rpe_025*(hy(i,j+1,1)+rpe_2*aa*hy(i,j,1)+hy(i,j-1,1))
+  enddo
+enddo
+
+end subroutine
+
+
+SUBROUTINE MPDATA(U1,U2,X,H,N,M,IORD,ISOR,NONOS,IDIV,IBC, IP)
+
+use implicit_functions_DP
+implicit none
+
+INTEGER :: N, M
+
+double precision :: U1(N,M),U2(N,M+1),X(N,M),H(N,M)
+INTEGER :: IP(N)
+INTEGER  :: IORD, ISOR, NONOS, IDIV, IBC 
+
+
+double precision :: V1(N,M),V2(N,M+1),F1(N,M),F2(N,M+1)  &
+    &      ,CP(N,M),CN(N,M)   
+double precision :: MX(N,M),MN(N,M)
+
+
+double precision :: EP
+INTEGER :: N1, N2, I, J, K
+
+
+N1=N
+N2=M
+
+
+EP=1.E-10
+
+
+IF(ISOR.EQ.3) IORD=MAX(IORD,3)
+!
+!      DO 287 I=1,N1
+!  287 IP(I)=MOD(I+(N1-2)/2-1,N1-2)+1
+!
+
+DO J=1,N2
+  DO I=1,N1
+    V1(I,J)=U1(I,J)
+  end do
+end do
+
+DO J=1,N2+1
+  DO I=1,N1
+    V2(I,J)=U2(I,J)
+  end do
+end do
+
+!C                 
+
+IF(NONOS.EQ.1) THEN           
+
+  DO J=2,N2-1
+    DO I=2,N1-1
+      MX(I,J)=max(X(I-1,J),X(I,J),X(I+1,J),X(I,J-1),X(I,J+1))
+      MN(I,J)=min(X(I-1,J),X(I,J),X(I+1,J),X(I,J-1),X(I,J+1))
+    end do
+  end do
+
+  DO I=2,N1-1
+      MX(I,1)=max(X(I-1,1),X(I,1),X(I+1,1),IBC*X(IP(I),1),X(I,2))
+      MN(I,1)=min(X(I-1,1),X(I,1),X(I+1,1),IBC*X(IP(I),1),X(I,2))
+      MX(I,N2)=max(X(I-1,N2),X(I,N2),X(I+1,N2),X(I,N2-1),         &
+       &             IBC*X(IP(I),N2))
+      MN(I,N2)=min(X(I-1,N2),X(I,N2),X(I+1,N2),X(I,N2-1),         &
+       &             IBC*X(IP(I),N2))
+  end do
+
+  CALL XBC(MX,N1,N2)
+  CALL XBC(MN,N1,N2)
+ENDIF
+!C    
+
+DO K=1,IORD
+  ! COMPUTE DONOR-CELL FLUXES
+  DO J=1,N2
+    DO I=2,N1-1
+      F1(I,J)=DONOR(X(I-1,J),X(I,J),V1(I,J))
+    end do
+  end do     
+  
+  DO J=2,N2
+    DO I=2,N1-1
+      F2(I,J)=DONOR(X(I,J-1),X(I,J),V2(I,J))
+    end do
+  end do
+  
+  DO I=2,N1-1
+    F2(I,N2+1)=DONOR(X(I,N2),IBC*X(IP(I),N2),V2(I,N2+1))
+    F2(I,1)=DONOR(IBC*X(IP(I),1),X(I,1),V2(I,1))
+  end do
+
+  CALL XBC(F1,N1,N2)
+  CALL XBC(F2,N1,N2+1)
+  ! COMPUTE NEW UPWIND-SOLUTION
+  DO J=1,N2
+    DO I=2,N1-1
+      X(I,J)=X(I,J)-(F1(I+1,J)-F1(I,J)+F2(I,J+1)-F2(I,J))/H(I,J)
+    end do
+  end do 
+  
+  CALL XBC(X,N1,N2)
+!
+  IF(.not. (K.EQ.IORD)) then  !! skip if last iteration
+!CONVERT VELOCITIES TO LOCAL STORAGE
+    DO J=1,N2
+      DO I=1,N1
+        F1(I,J)=V1(I,J)
+      end do
+    end do
+    DO J=1,N2+1
+      DO I=1,N1
+        F2(I,J)=V2(I,J)
+      end do
+    end do 
+
+! CALCULATE PSEUDO VELOCITIES      
+! COMPUTE FIRST DIRECTION    
+    DO J=2,N2-1
+      DO I=2,N1-1
+        V1(I,J)=VDYF(X(I-1,J),X(I,J),F1(I,J),rpe_05*(H(I-1,J)+H(I,J)),EP)      &
+     & +VCORR(F1(I,J), F2(I-1,J)+F2(I-1,J+1)+F2(I,J+1)+F2(I,J),         &
+     &   ABS(X(I-1,J+1))+ABS(X(I,J+1))-ABS(X(I-1,J-1))-ABS(X(I,J-1)),   &
+     &   ABS(X(I-1,J+1))+ABS(X(I,J+1))+ABS(X(I-1,J-1))+ABS(X(I,J-1))+EP,&
+     &                 rpe_05*(H(I-1,J)+H(I,J)))
+      end do
+    end do
+! COMPUTE B.C IN Y DIRECTION
+    DO I=2,N1-1
+      V1(I,1)=VDYF(X(I-1,1),X(I,1),F1(I,1),rpe_05*(H(I-1,1)+H(I,1)),EP)        &
+     & +VCORR(F1(I,1), F2(I-1,1)+F2(I-1,2)+F2(I,2)+F2(I,1),             &
+     &   ABS(X(I-1,2))+ABS(X(I,2))-ABS(X(IP(I-1),1))-ABS(X(IP(I),1)),   &
+     &   ABS(X(I-1,2))+ABS(X(I,2))+ABS(X(IP(I-1),1))+ABS(X(IP(I),1))+EP,&
+     &                 rpe_05*(H(I-1,1)+H(I,1)))
+      V1(I,N2)=VDYF(X(I-1,N2),X(I,N2),F1(I,N2),rpe_05*(H(I-1,N2)+H(I,N2)),EP)  &
+     & +VCORR(F1(I,N2), F2(I-1,N2)+F2(I-1,N2+1)+F2(I,N2+1)+F2(I,N2),    &
+     &           ABS(X(IP(I-1),N2))+ABS(X(IP(I),N2))                    &
+     &          -ABS(X(I-1,N2-1))-ABS(X(I,N2-1)),                       &
+     &           ABS(X(IP(I-1),N2))+ABS(X(IP(I),N2))                    &
+     &          +ABS(X(I-1,N2-1))+ABS(X(I,N2-1))+EP,                    &
+     &                 rpe_05*(H(I-1,N2)+H(I,N2)))                          
+    end do         
+    
+    IF(IDIV.EQ.1) THEN
+
+  !COMPUTE FLOW-DIVERGENCE CORRECTION
+      DO J=1,N2
+        DO I=2,N1-1
+          V1(I,J)=V1(I,J)                                               &
+     &    -VDIV1(F1(I-1,J),F1(I,J),F1(I+1,J),rpe_05*(H(I-1,J)+H(I,J)))      &
+     &    -VDIV2(F1(I,J),F2(I-1,J+1),F2(I,J+1),F2(I-1,J),F2(I,J),       &
+     &                 rpe_05*(H(I-1,J)+H(I,J)))
+        end do
+      end do
+    ENDIF   
+
+   !COMPUTE SECOND DIRECTION
+    DO J=2,N2
+      DO I=2,N1-1
+        V2(I,J)=VDYF(X(I,J-1),X(I,J),F2(I,J),rpe_05*(H(I,J-1)+H(I,J)),EP)      &
+     & +VCORR(F2(I,J), F1(I,J-1)+F1(I,J)+F1(I+1,J)+F1(I+1,J-1),         &
+     &   ABS(X(I+1,J-1))+ABS(X(I+1,J))-ABS(X(I-1,J-1))-ABS(X(I-1,J)),   &
+     &   ABS(X(I+1,J-1))+ABS(X(I+1,J))+ABS(X(I-1,J-1))+ABS(X(I-1,J))+EP,& 
+     &                 rpe_05*(H(I,J-1)+H(I,J)))
+      end do
+    end do
+
+   !COMPUTE B.C IN Y-DIRECTION
+    DO I=2,N1-1
+      V2(I,1)=VDYF(X(IP(I),1),X(I,1),F2(I,1),rpe_05*(H(IP(I),1)+H(I,1)),EP)    &
+       & +VCORR(F2(I,1), F1(IP(I),1)+F1(I,1)+F1(I+1,1)+F1(IP(I+1),1),     &
+       &    ABS(X(IP(I+1),1))+ABS(X(I+1,1))                               &
+       &   -ABS(X(IP(I-1),1))-ABS(X(I-1,1)),                              &
+       &    ABS(X(IP(I+1),1))+ABS(X(I+1,1))                               &
+       &   +ABS(X(IP(I-1),1))+ABS(X(I-1,1))+EP,                           &
+       &                 rpe_05*(H(IP(I),1)+H(I,1)))                        
+      V2(I,N2+1)=VDYF(X(I,N2),X(IP(I),N2),F2(I,N2+1),                   &
+       &                        rpe_05*(H(I,N2)+H(IP(I),N2)),EP)                 &
+       &+VCORR(F2(I,N2+1),F1(I,N2)+F1(IP(I),N2)+F1(IP(I+1),N2)+F1(I+1,N2),&
+       &   ABS(X(I+1,N2))+ABS(X(IP(I+1),N2))                              & 
+       &  -ABS(X(I-1,N2))-ABS(X(IP(I-1),N2)),                             &
+       &   ABS(X(I+1,N2))+ABS(X(IP(I+1),N2))                              & 
+       &  +ABS(X(I-1,N2))+ABS(X(IP(I-1),N2))+EP,                          &
+       &                        rpe_05*(H(I,N2)+H(IP(I),N2)))
+    end do      
+
+    IF(IDIV.EQ.1) THEN
+
+      DO J=2,N2
+        DO I=2,N1-1
+          V2(I,J)=V2(I,J)                                               &
+           &   -VDIV1(F2(I,J-1),F2(I,J),F2(I,J+1),rpe_05*(H(I,J-1)+H(I,J)))   &
+           &   -VDIV2(F2(I,J),F1(I+1,J-1),F1(I+1,J),F1(I,J-1),F1(I,J),    &
+           &                rpe_05*(H(I,J-1)+H(I,J)))
+        end do
+      end do
+
+      DO I=2,N1-1
+        V2(I,1)=V2(I,1)                                                 &
+      &   -VDIV1(-F2(IP(I),1),F2(I,1),F2(I,2),rpe_05*(H(IP(I),1)+H(I,1)))   &
+      &   -VDIV2( F2(I,1),F1(IP(I+1),1),F1(I+1,1),F1(IP(I),1),F1(I,1),  &
+      &                rpe_05*(H(IP(I),1)+H(I,1)))
+        V2(I,N2+1)=V2(I,N2+1)                                           &
+      &   -VDIV1(F2(I,N2),F2(I,N2+1),-F2(IP(I),N2+1)                    &
+      &                             ,rpe_05*(H(I,N2)+H(IP(I),N2)))          &
+      &   -VDIV2(F2(I,N2+1),                                            &
+      &          F1(I+1,N2),F1(IP(I+1),N2),F1(I,N2),F1(IP(I),N2),       &
+      &                rpe_05*(H(I,N2)+H(IP(I),N2)))
+      end do 
+       
+    ENDIF
+
+!
+! THIRD ORDER CORRECTION
+
+    IF(ISOR.EQ.3) THEN
+!  FIRST DIRECTION
+      DO J=1,N2
+        DO I=3,N1-1
+          V1(I,J)=V1(I,J)     +VCOR31(F1(I,J),                          &
+            &  X(I-2,J),X(I-1,J),X(I,J),X(I+1,J),rpe_05*(H(I-1,J)+H(I,J)),EP)
+        end do
+        
+        V1(2,J)=V1(2,J)     +VCOR31(F1(2,J),                            &
+          &   X(N1-2,J),X(1,J),X(2,J),X(3,J),rpe_05*(H(1,J)+H(2,J)),EP)
+      end do  
+
+      DO J=2,N2-1
+        DO I=2,N1-1               
+          V1(I,J)=V1(I,J)                                               &
+     &     +VCOR32(F1(I,J),F2(I-1,J)+F2(I-1,J+1)+F2(I,J+1)+F2(I,J),     &
+     &     ABS(X(I,J+1))-ABS(X(I,J-1))-ABS(X(I-1,J+1))+ABS(X(I-1,J-1)), &
+     &   ABS(X(I,J+1))+ABS(X(I,J-1))+ABS(X(I-1,J+1))+ABS(X(I-1,J-1))+EP,&
+     &                   rpe_05*(H(I-1,J)+H(I,J)))
+         end do
+       end do
+
+! C B.C. FOLLOW
+      DO I=2,N1-1
+        V1(I,1)=V1(I,1)                                                 &
+        & +VCOR32(F1(I,1),F2(I-1,1)+F2(I-1,2)+F2(I,2)+F2(I,1),          & 
+        & ABS(X(I,2))-ABS(X(IP(I),1))-ABS(X(I-1,2))+ABS(X(IP(I-1),1)),   &
+        & ABS(X(I,2))+ABS(X(IP(I),1))+ABS(X(I-1,2))+ABS(X(IP(I-1),1))+EP,&
+        &               rpe_05*(H(I-1,1)+H(I,1)))
+        
+        V1(I,N2)=V1(I,N2)                                               &
+        & +VCOR32(F1(I,N2),F2(I-1,N2)+F2(I-1,N2+1)+F2(I,N2+1)+F2(I,N2), &
+        &  ABS(X(IP(I),N2))-ABS(X(I,N2-1))                              &
+        &                  -ABS(X(IP(I-1),N2))+ABS(X(I-1,N2-1)),        &
+        &  ABS(X(IP(I),N2))+ABS(X(I,N2-1))                              &
+        &                  +ABS(X(IP(I-1),N2))+ABS(X(I-1,N2-1))+EP,     &
+        &                rpe_05*(H(I-1,N2)+H(I,N2)))       
+      end do
+
+      DO J=1,N2
+        V1(1,J)=V1(N1-1,J)
+        V1(N1,J)=V1(2,J)
+      end do
+
+   !  SECOND DIRECTION
+      DO J=3,N2-1
+        DO I=2,N1-1
+          V2(I,J)=V2(I,J)     +VCOR31(F2(I,J),                         &
+         &    X(I,J-2),X(I,J-1),X(I,J),X(I,J+1),rpe_05*(H(I,J-1)+H(I,J)),EP)  
+        end do
+      end do
+
+      DO I=2,N1-1
+        V2(I,1)=V2(I,1)     +VCOR31(F2(I,1),                            &
+         &    X(IP(I),2),X(IP(I),1),X(I,1),X(I,2),rpe_05*(H(IP(I),1)+H(I,1)),EP)  
+        V2(I,2)=V2(I,2)     +VCOR31(F2(I,2),                            & 
+         &       X(IP(I),1),X(I,1),X(I,2),X(I,3),rpe_05*(H(I,1)+H(I,2)),EP)   
+        V2(I,N2)=V2(I,N2)     +VCOR31(F2(I,N2),                         &
+         & X(I,N2-2),X(I,N2-1),X(I,N2),X(IP(I),N2),rpe_05*(H(I,N2-1)+H(I,N2)),EP)  
+        V2(I,N2+1)=V2(I,N2+1) +VCOR31(F2(I,N2+1), X(I,N2-1),X(I,N2),    &
+         &  X(IP(I),N2),X(IP(I),N2-1),rpe_05*(H(I,N2)+H(IP(I),N2)),EP)  
+      end do
+
+      DO J=2,N2
+        DO I=2,N1-1
+          V2(I,J)=V2(I,J)                                                   &  
+         & +VCOR32(F2(I,J),F1(I,J-1)+F1(I+1,J-1)+F1(I+1,J)+F1(I,J),         &
+         &  ABS(X(I+1,J))-ABS(X(I-1,J))-ABS(X(I+1,J-1))+ABS(X(I-1,J-1)),    &
+         &  ABS(X(I+1,J))+ABS(X(I-1,J))+ABS(X(I+1,J-1))+ABS(X(I-1,J-1))+EP, &
+         &                  rpe_05*(H(I,J-1)+H(I,J)))
+        end do
+      end do   
+
+    ENDIF  !! end third order correction
+
+!    CALL B.C IN X DIRECTION
+    CALL XBC(V1,N1,N2)
+    CALL XBC(V2,N1,N2+1)
+
+!
+!     DO 23 J=1,N2
+!     DO 23 I=1,N1
+!  23 V1(I,J)=SIGN(1.,V1(I,J))*min(ABS(U1(I,J)),ABS(V1(I,J)))
+!     DO 24 J=1,N2+1                     
+!     DO 24 I=1,N1
+!  24 V2(I,J)=SIGN(1.,V2(I,J))*min(ABS(U2(I,J)),ABS(V2(I,J)))
+!
+    IF(.not. (NONOS.EQ.0)) then     !  NON-OSCILLATORY OPTION
+
+
+      DO J=2,N2-1
+        DO I=2,N1-1
+          MX(I,J)=max(X(I-1,J),X(I,J),X(I+1,J),X(I,J-1),X(I,J+1),MX(I,J))
+          MN(I,J)=min(X(I-1,J),X(I,J),X(I+1,J),X(I,J-1),X(I,J+1),MN(I,J))
+        end do
+      end do      
+
+      DO I=2,N1-1
+        MX(I,1)=max(X(I-1,1),X(I,1),X(I+1,1),IBC*X(IP(I),1),        &
+         &                                   X(I,2),MX(I,1))
+        MN(I,1)=min(X(I-1,1),X(I,1),X(I+1,1),IBC*X(IP(I),1),        &
+         &                                   X(I,2),MN(I,1))
+        MX(I,N2)=max(X(I-1,N2),X(I,N2),X(I+1,N2),X(I,N2-1),         &
+         &                          IBC*X(IP(I),N2),MX(I,N2))
+        MN(I,N2)=min(X(I-1,N2),X(I,N2),X(I+1,N2),X(I,N2-1),         &
+         &                          IBC*X(IP(I),N2),MN(I,N2))
+      end do      
+
+      CALL XBC(MX,N1,N2)
+      CALL XBC(MN,N1,N2)
+
+!
+      DO J=1,N2
+        DO I=2,N1-1
+          F1(I,J)=DONOR(X(I-1,J),X(I,J),V1(I,J))
+        end do
+      end do
+
+      DO J=2,N2
+        DO I=2,N1-1
+          F2(I,J)=DONOR(X(I,J-1),X(I,J),V2(I,J))
+        end do
+      end do
+
+      DO I=2,N1-1    
+        F2(I,N2+1)=DONOR(X(I,N2),IBC*X(IP(I),N2),V2(I,N2+1))
+        F2(I,1)=DONOR(IBC*X(IP(I),1),X(I,1),V2(I,1))
+      end do
+      
+      CALL XBC(F1,N1,N2)
+      CALL XBC(F2,N1,N2+1)
+
+      DO J=1,N2
+        DO I=2,N1-1
+          CP(I,J)=(MX(I,J)-X(I,J))*H(I,J)/                              &
+           & (PN(F1(I+1,J))+PP(F1(I,J))+PN(F2(I,J+1))+PP(F2(I,J))+EP)
+          CN(I,J)=(X(I,J)-MN(I,J))*H(I,J)/                              &
+           & (PP(F1(I+1,J))+PN(F1(I,J))+PP(F2(I,J+1))+PN(F2(I,J))+EP)
+        end do
+      end do
+
+      CALL XBC(CP,N1,N2)
+      CALL XBC(CN,N1,N2)
+
+      DO J=2,N2
+        DO I=2,N1-1
+          V1(I,J)=PP(V1(I,J))*                                      &
+            & ( min(rpe_1,CP(I,J),CN(I-1,J))*PP(SIGN(rpe_1, X(I-1,J)))  &
+            & +min(rpe_1,CP(I-1,J),CN(I,J))*PP(SIGN(rpe_1,-X(I-1,J))) ) &
+            & -PN(V1(I,J))*                                         &
+            & ( min(rpe_1,CP(I-1,J),CN(I,J))*PP(SIGN(rpe_1, X(I ,J )))  &
+            & +min(rpe_1,CP(I,J),CN(I-1,J))*PP(SIGN(rpe_1,-X(I ,J ))) ) 
+          V2(I,J)=PP(V2(I,J))*                                      &
+            & ( min(rpe_1,CP(I,J),CN(I,J-1))*PP(SIGN(rpe_1, X(I,J-1)))  & 
+            & +min(rpe_1,CP(I,J-1),CN(I,J))*PP(SIGN(rpe_1,-X(I,J-1))) ) &
+            & -PN(V2(I,J))*                                         &
+            & ( min(rpe_1,CP(I,J-1),CN(I,J))*PP(SIGN(rpe_1, X(I ,J )))  &
+            & +min(rpe_1,CP(I,J),CN(I,J-1))*PP(SIGN(rpe_1,-X(I ,J ))) )
+        end do
+      end do
+   ! B.C. FOLLOW
+      DO I=2,N1-1
+        V2(I,1)=PP(V2(I,1))*                                              &
+         & ( min(rpe_1,CP(I,1),CN(IP(I),1))*PP(SIGN(rpe_1, IBC*X(IP(I),1)))   &
+         & +min(rpe_1,CP(IP(I),1),CN(I,1))*PP(SIGN(rpe_1,-IBC*X(IP(I),1))) )  &
+         &    -PN(V2(I,1))*                                               &
+         & ( min(rpe_1,CP(IP(I),1),CN(I,1))*PP(SIGN(rpe_1, X(I ,1 )))         &
+         & +min(rpe_1,CP(I,1),CN(IP(I),1))*PP(SIGN(rpe_1,-X(I ,1 ))) )
+        V2(I,N2+1)=PP(V2(I,N2+1))*                                        &
+         & ( min(rpe_1,CP(IP(I),N2),CN(I,N2))*PP(SIGN(rpe_1, X(I,N2)))        &
+         & +min(rpe_1,CP(I,N2),CN(IP(I),N2))*PP(SIGN(rpe_1,-X(I,N2))) )       &
+         &    -PN(V2(I,N2+1))*                                            &
+         & ( min(rpe_1,CP(I,N2),CN(IP(I),N2))*PP(SIGN(rpe_1, IBC*X(IP(I),N2)))&
+         & +min(rpe_1,CP(IP(I),N2),CN(I,N2))*PP(SIGN(rpe_1,-IBC*X(IP(I),N2))))  
+        V1(I,1)=PP(V1(I,1))*                                              &
+         & ( min(rpe_1,CP(I,1),CN(I-1,1))*PP(SIGN(rpe_1, X(I-1,1)))           &  
+         & +min(rpe_1,CP(I-1,1),CN(I,1))*PP(SIGN(rpe_1,-X(I-1,1))) )          &
+         &   -PN(V1(I,1))*                                                &
+         & ( min(rpe_1,CP(I-1,1),CN(I,1))*PP(SIGN(rpe_1, X(I ,1 )))           &
+         & +min(rpe_1,CP(I,1),CN(I-1,1))*PP(SIGN(rpe_1,-X(I ,1 ))) )
+      end do
+
+      CALL XBC(V1,N1,N2)
+      CALL XBC(V2,N1,N2+1)
+!
+!         END OF NONOSCILLATORY OPTION
+!
+    end if  !! non-oscillary option
+
+  end if
+
+end do
+
+END subroutine   
+
 SUBROUTINE MPDATT(U1,U2,X,H,N,M,IORD,ISOR,NONOS,IDIV,IBC, IP, X_T, codes)
 
 use implicit_functions_DP
@@ -2928,7 +4090,8 @@ implicit none
 END SUBROUTINE   
 
   
-!! periodic boundary condition
+
+
 SUBROUTINE XBC(X,N,M)
 use implicit_functions_DP
 
@@ -2946,7 +4109,6 @@ end do
 
 END subroutine
 
-!! periodic boundary condition: same as XBC
 SUBROUTINE XBC_52(X,N,M)
 use implicit_functions_DP
 
@@ -3013,6 +4175,11 @@ TIME=KT*DT/3600.0
  COUR1=0.0d0
  COUR2=0.0d0
 
+!GC1_52= DT_52/(2.0d0*ACOS(-1.0d0)/FLOAT(N-2))                                ! DT/DX
+!GC1 = GC1_52
+!GC2_52= DT_52/(ACOS(-1.0d0)/FLOAT(M))                                        ! DT/DY
+!GC2 = GC2_52
+
 
 DO J=1,M
   DO I=2,N
@@ -3020,7 +4187,7 @@ DO J=1,M
     COUR1=max(COUR1,DLI*SQRT(abs(PT(I,J))))
     COUR2=max(COUR2, GC1*ABS(U(I,J)/HX(I,J))                          &
       &                  +GC2*ABS(V(I,J)/HY(I,J)) )
-   ! COUR2=max(COUR2, max(DT*ABS(U(I,J)/ (HX(I,J)/FLOAT(N-2)) ), & !! COURANT NUMBER
+   ! COUR2=max(COUR2, max(DT*ABS(U(I,J)/ (HX(I,J)/FLOAT(N-2)) ),                           &
    !   &             DT*ABS(V(I,J)/ (HY(I,J)/FLOAT(M)  ) ) ) &
    !   &       )
   end do
@@ -3054,7 +4221,11 @@ avg_lp_time=sum_lp_time/MAX(ICOUNT,1)
 NITAV=float(NITSM)/MAX(ICOUNT,1)
 
       write(*,*) 'ERROR:', ERROR,'NITER, NITAV (GCR ITERATIONS): ',NITER,NITAV
+!  303 FORMAT(4X,'ERROR:',E11.4,1X,'NITER, NITAV (GCR ITERATIONS):',2I4)
       write(*,*) 'Computing time per implicit solve, low precision:', avg_time, avg_lp_time
+
+      write(*,*) 'U 1 zonal band', SUM(PD(2:N-1,1)*U(2:N-1,1))/(N-2), 'U M Zonal Band',SUM(PD(2:N-1,M)*U(2:N-1,M))/(N-2)
+      write(*,*) 'U 4 zonal band', SUM(PD(2:N-1,4)*U(2:N-1,4))/(N-2), 'U M-35 Zonal Band',SUM(PD(2:N-1,M-3)*U(2:N-1,M-3))/(N-2)
 END subroutine
 
 
@@ -3069,7 +4240,7 @@ integer :: N, M, IRHW, bits
 double precision :: H(N, M), U(N, M), V(N, M), X(N), Y(M), TIME
 logical :: codesignQ,codesignD, itsopen
 
- character(len=150) path, file_name, experiment, simtime, codesQ, bit_count, Precond, EXP_NAME, codesD
+ character(len=105) path, file_name, experiment, simtime, codesQ, bit_count, Precond, EXP_NAME, codesD
 INTEGER I,J
 
 
@@ -3119,7 +4290,7 @@ integer :: N, M, IRHW, bits,NITER,NITSM,ICOUNT
 double precision :: H(N, M), U(N, M), V(N, M), X(N), Y(M), TIME, sum_time, sum_lp_time
 logical ::  codesignQ, codesignD
 
- character(len=150) path, file_name, experiment, simtime, codesD, codesQ, bit_count
+ character(len=105) path, file_name, experiment, simtime, codesD, codesQ, bit_count
 INTEGER I,J
 
 
@@ -3152,7 +4323,7 @@ double precision :: R_rpe(N, M), TIME_rpe, X_rpe(N), Y_rpe(M)
 double precision :: R(N, M), X(N), Y(M), TIME, exitcond
 logical :: codesignQ, codes
 
- character(len=150) path, file_name, experiment, simtime, codesQ, codesD, bit_count, Precond, EXP_NAME, str_iter
+ character(len=105) path, file_name, experiment, simtime, codesQ, codesD, bit_count, Precond, EXP_NAME, str_iter
 INTEGER I,J
 
 R(:,:) = R_rpe(:, :)
@@ -3198,7 +4369,7 @@ integer :: N, M, IRHW, bits
 double precision :: H(N, M), U(N, M), V(N, M), X(N), Y(M), TIME
 logical :: codesignQ, codesignD
 
- character(len=150) path, file_name, experiment, simtime, codesQ, codesD, bit_count, Precond, EXP_NAME
+ character(len=105) path, file_name, experiment, simtime, codesQ, codesD, bit_count, Precond, EXP_NAME
 INTEGER I,J
 
 H(:, :)=H_rpe(:, :)
@@ -3267,7 +4438,7 @@ integer :: N, M, TIMESTEP
 double precision :: H(N, M)
 
 
- character(len=150) path, file_name, simtime, EXP_NAME
+ character(len=105) path, file_name, simtime, EXP_NAME
  character(len=*) field
 INTEGER I,J
 
@@ -3303,7 +4474,7 @@ integer :: N, M, TIMESTEP, iteration
 double precision :: H(N, M)
 
 
- character(len=150) path, file_name, simtime, EXP_NAME, str_iteration
+ character(len=105) path, file_name, simtime, EXP_NAME, str_iteration
  character(len=*) field
 INTEGER I,J
 
@@ -3331,35 +4502,13 @@ end do
 
 end subroutine
 
-
-subroutine read_layer(filename_NN,Layer_NN,input_neurons,output_neurons)
-character(len=150) :: filename_NN
-integer :: input_neurons, output_neurons
-double precision :: Layer_NN(input_neurons, output_neurons)
-
-Open(unit=599, file=filename_NN, status='old', form = 'formatted')
-
-do I=1,input_neurons
-  !do J=1,output_neurons
-    read(unit=599, fmt=*) Layer_NN(I,:)
-    !write(*,*) I, J, Layer_NN(I,J)
-  !end do
-end do
-
- close(unit=599)
-
-
-end subroutine
-
-
-!! preconditioned Linear Solver
 subroutine GCR_PRE(p,pfx,pfy,hx,hy,s,b,p0,pb,e1,e2,cor,ip  &
               & ,d,q,r,ar,n1,n2,gc1,gc2, &
            &    MGH1IHX, MGH2IHY, AC, BC, AD, BD,  &
            &  niter,nitsm,icount,error, p_T, sum_time,&
            &  sum_lp_time,ID_PREC, codes, save_time , &
            & TIME, codesQ, IRHW, DX_rpe, DY_rpe, Exit_cond, EXP_NAME&
-           & , iprint, num_of_bits, DP_Depth, KT, Layer1, Layer2)
+           & , iprint, num_of_bits, DP_Depth, KT)
 use implicit_functions_DP
 
 implicit none
@@ -3396,32 +4545,26 @@ double precision :: eps, help1, help2, quotient, lowprectime, err_true, err0_tru
 double precision :: Exit_cond
 
 double precision :: TIME, DX_rpe(n1), DY_rpe(n2)
- character(len=150) :: EXP_NAME
+ character(len=105) :: EXP_NAME
 LOGICAL :: codesQ
 
 INTEGER :: IRHW 
 
-!ML preconditioner
-double precision :: Layer1(32 ,177,1), &
-                 &  Layer2(32 ,6,1) 
-double precision :: NN_r_HP(n1-2,n2)
-double precision :: NNa11(n1-2,n2),NNa12(n1-2,n2),NNa21(n1-2,n2)&
-                 & ,NNa22(n1-2,n2),NNb11(n1-2,n2),NNb22(n1-2,n2), NN_Y(n2), MLx(n1,n2)
-double precision :: inflation_factor0, inflation_factorit
-
 ps(:,:)=0.0d0
 divi(:,:)=0.0d0
 
-
+!write(*,*) num_of_bits
 lowprectime=0.0d0
 
+! end if
 
-eps=10.e-11 
+
+eps=1.e-10  !! original
 itr=100
 
 
 epa=1.e-30
-
+!! for testing for consistency
 
 
  DO J=1,n2
@@ -3435,6 +4578,19 @@ p_true(:,:)=p(:,:)
 p0_true(:,:)=p0(:,:)
 b_true(:,:)=b(:,:)
 
+
+ DO J=1+DP_Depth,n2-DP_Depth
+   DO I=1,n1
+    PMB(I, J)=PMB(I, J)
+    PMP0(I,J)=PMP0(I,J)
+    !p(I,J)=p(I,J)
+    p0(I,J)=p0(I,J)
+    b(I,J)=b(I,J)
+
+   enddo
+ enddo
+
+!call cpu_time(startLP)
 DO J=1,n2
   DO I=1,n1
     r(I,J)=rpe_0
@@ -3451,32 +4607,98 @@ do l=1,lord
   enddo
 enddo
 
+!call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
+ !!! true reference Residual 
+
+!call lap0_depth(a11_t,a12_t,a21_t,a22_t,b11_t,b22_t,                   &
+!     &          pb,p0,e1,e2,hx,hy,cor,n1,n2,gc1,gc2, &
+!           &    MGH1IHX, MGH2IHY, AC, BC, AD, BD,  &
+!           & 0)
+! end matrices
+!r0_true(:,:)=0.0d0
+!call laplfirst(p_true(:,:),r0_true(:,:),a11_t,a12_t,a21_t,a22_t,b11_t,b22_t, p0_true,   &
+!     &                           pfx,pfy,s,n1,n2,ip)
+
+!DO J=1,n2
+!  DO I=1,n1
+!    r0_true(I,J)=0.5d0*r0_true(I,J)-(p_true(I,J)-b_true(I,J))
+! ! write(*,*), i, J, P(i,J)
+!  enddo
+!enddo
+!!! end true reference Residual
 
 
+
+!! matrix entries
+!call lap0(a11,a12,a21,a22,b11,b22,                   &
+!     &          pb,p0,e1,e2,hx,hy,cor,n1,n2,gc1,gc2)
 call lap0_depth(a11,a12,a21,a22,b11,b22,                   &
      &          pb,p0,e1,e2,hx,hy,cor,n1,n2,gc1,gc2, &
            &    MGH1IHX, MGH2IHY, AC, BC, AD, BD,  &
            & DP_Depth)
 
+     ! Preconditioning: init
+!call precon_prep_depth(T_step, A_c, B_c, C_c,a11,a12,a21,a22,b11,b22,&
+!              & p0,pfx,pfy,s,n1,n2,ip,ID_PREC)
+call precon_prep_depth(T_step, A_c, ps, divi,a11,a12,a21,a22,b11,b22,&
+              & p0,pfx,pfy,s,n1,n2,ip,ID_PREC, DP_Depth)
 
-! calculate initial residual
+
+
+
+!call laplfirst(p(:,:),r_HP(:,:),a11,a12,a21,a22,b11,b22, p0,   &
+!     &                           pfx,pfy,s,n1,n2,ip)
 
 call laplfirst_depth(p(:,:),r_HP(:,:), a11,a12,a21,a22,b11,b22,PMP0,&
      &                     pfx,pfy,S,n1,n2,IP, 52,DP_Depth)
 
 
-
+!! calculate initial residual
 call cpu_time(startLP)
 
- DO J=1,n2
+ DO J=1+DP_Depth,n2-DP_Depth
    DO I=1,n1
  
     r_HP(I,J)=rpe_05*r_HP(I,J)-(PMB(I,J))
-    r(I,J)  = r_HP(I,J)
+
    enddo
  enddo
 
-!! calculate initial residual done
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
+
+  DO J=1,DP_Depth
+    DO I=1,n1
+
+    r_HP(I,J)=rpe_05*r_HP(I,J)-(PMB(I,J))
+
+    enddo
+  enddo
+
+  DO J=n2+1-DP_Depth,n2
+    DO I=1,n1
+
+    r_HP(I,J)=rpe_05*r_HP(I,J)-(PMB(I,J))
+
+    enddo
+  enddo
+
+
+
+
+
+!write(*,*) 'wo'
+!call prforc_depth(p,pfx,pfy,pb,p0,e1,e2,hx,hy,cor,n1,n2,ip,gc1,gc2,1,1, num_of_bits, DP_Depth)
+!call prforc(p,pfx,pfy,pb,p0,e1,e2,hx,hy,cor,n1,n2,ip,gc1,gc2,1,1)
+!write(*,*) 'prforc_depth'
+!call diver_depth(r,pfx,pfy,hx,hy,s,n1,n2,ip,-1, num_of_bits, DP_Depth)
+!call diver(r,pfx,pfy,hx,hy,s,n1,n2,ip,-1)
+!write(*,*) 'diver_depth'
+
+call cpu_time(start) 
 
 
 
@@ -3489,72 +4711,190 @@ call cpu_time(startLP)
 !enddo
 
 
+call cpu_time(startLP)
+      DO J=1+DP_Depth,n2-DP_Depth
+        DO I=1,n1
+ 
+          r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+
+          r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+
+          r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+
+
 err0 =maxval(ABS(r_HP(:,:)))
 
-!call write_MLfields_iter(r_HP(:,:), KT, n1, n2, EXP_NAME, 'R_iter', 0)
+call write_MLfields_iter(r_HP(:,:), KT, n1, n2, EXP_NAME, 'R_iter', 0)
 if (iprint==1) then
     call write_residual(r,eps*Exit_cond, 0, TIME, codesQ, codes, IRHW, DX_rpe, DY_rpe,&
                      & n1, n2, 52, 5 ,EXP_NAME)
 endif
 
      
-!write(*,*) 0, maxval(ABS(r_HP(:,:))), eps*Exit_cond
+call cpu_time(startLP)
+      DO J=1+DP_Depth,n2-DP_Depth
+        DO I=1,n1
+ 
+! precon parameters
+      A_c(I,J) = A_c(I,J)
+      ps(I,J) = ps(I,J)
+      divi(I,J) = divi(I,J)
 
-! Apply Full Machine-learned preconditioner
-
-      NN_Y(:) = DY_rpe(:)/(3.5d0/2.0d0)
-    do J=0,n2-1
-
-      NN_r_HP(:,J+1)= (r_HP(2:n1-1,n2-J))/9.80616
-      NNa11(:,J+1) = (a11(2:n1-1,n2-J)-1.17612126e+11 )/(8.54163233e+11 - 2.48437139e+10)
-      NNa12(:,J+1) = a12(2:n1-1,n2-J)/(2.0d0*7.32606531e+08)
-      NNa21(:,J+1) = (a21(2:n1-1,n2-J)-2.57373289e+10 )/(4.34271611e+10 - 1.28429346e+09) 
-      NNa22(:,J+1) = a22(2:n1-1,n2-J)/(2.0d0*7.32606531e+08)
-      NNb11(:,J+1) =  b11(2:n1-1,n2-J)/(2.0d0*5.26020440e+09)
-      NNb22(:,J+1) = b22(2:n1-1,n2-J)/(2.0d0*2.63625191e+09 )
-    enddo
-
-
-call ML_precon(MLx(:,:),Layer1, Layer2,NN_Y,NN_r_HP,NNa11,&
-          & NNa12,NNa21,NNa22,NNb11,NNb22,n1-2,n2)
-
-do J=0,n2-1
-
-  x(:,n2-J,1)=MLx(:,J+1)
-
-enddo
-    x(:,:,1)=x(:,:,1)*9.80616
-!call precon(r,x(:,:,1),ax(:,:,1), T_step,  A_c, ps, divi,a11,a12,a21,a22,b11,b22,p0,  &
-!                &   pfx,pfy,s,n1,n2,ip,ID_PREC, 52, DP_Depth)
-
-
-! Apply linear operator
-call lapl_depth(x(:,:,1),ax(:,:,1), A11,A12,A21,A22,B11,B22,P0,pfx,pfy,S,n1,n2,IP,52,DP_Depth)
-
-
-  DO J=1,n2
-    DO I=1,n1
-      ax(I,J,1)=rpe_05*ax(I,J,1)-x(I,J,1)
-    enddo
-  enddo
-
-! Apply linear operator done
+        enddo
+      enddo
 
 call cpu_time(endLP)
 lowprectime=lowprectime + endLP-startLP
 
-! start solver iterations
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+
+! precon parameters
+      A_c(I,J) = A_c(I,J)
+      ps(I,J) = ps(I,J)
+      divi(I,J) = divi(I,J)
+
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+
+! precon parameters
+      A_c(I,J) = A_c(I,J)
+      ps(I,J) = ps(I,J)
+      divi(I,J) = divi(I,J)
+
+        enddo
+      enddo
+
+
+
+call cpu_time(startLP)
+      DO J=1+DP_Depth,n2-DP_Depth
+        DO I=1,n1
+
+! operator L() parameters
+      a11(I,J) = a11(I,J)
+      a12(I,J) = a12(I,J)
+      a21(I,J) = a21(I,J)
+      a22(I,J) = a22(I,J)
+      b11(I,J) = b11(I,J)
+      b22(I,J) = b22(I,J)
+
+        enddo
+      enddo
+
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+
+! operator L() parameters
+      a11(I,J) = a11(I,J)
+      a12(I,J) = a12(I,J)
+      a21(I,J) = a21(I,J)
+      a22(I,J) = a22(I,J)
+      b11(I,J) = b11(I,J)
+      b22(I,J) = b22(I,J)
+
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+
+! operator L() parameters
+      a11(I,J) = a11(I,J)
+      a12(I,J) = a12(I,J)
+      a21(I,J) = a21(I,J)
+      a22(I,J) = a22(I,J)
+      b11(I,J) = b11(I,J)
+      b22(I,J) = b22(I,J)
+
+        enddo
+      enddo
+ 
+!
+call write_MLfields(a11(:,:), KT, n1, n2, EXP_NAME, 'a11')
+call write_MLfields(a12(:,:), KT, n1, n2, EXP_NAME, 'a12')
+call write_MLfields(a21(:,:), KT, n1, n2, EXP_NAME, 'a21')
+call write_MLfields(a22(:,:), KT, n1, n2, EXP_NAME, 'a22')
+call write_MLfields(b11(:,:), KT, n1, n2, EXP_NAME, 'b11')
+call write_MLfields(b22(:,:), KT, n1, n2, EXP_NAME, 'b22')
+
+
+call cpu_time(startLP)
+
+call precon(r,x(:,:,1),ax(:,:,1), T_step,  A_c, ps, divi,a11,a12,a21,a22,b11,b22,p0,  &
+                &   pfx,pfy,s,n1,n2,ip,ID_PREC, 52, DP_Depth)
+
+
+  call lapl_depth(x(:,:,1),ax(:,:,1), A11,A12,A21,A22,B11,B22,P0,pfx,pfy,S,n1,n2,IP,52,DP_Depth)
+   !call lapl(QU,AQU, A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP)
+ ! write(*,*) 'call to lapl working?'#
+
+
+
+  !! rewritten to change precision at poles as desired    
+  !! this sum could be problematic
+
+      DO J=1+DP_Depth,n2-DP_Depth
+        DO I=1,n1
+      ax(I,J,1)=rpe_05*ax(I,J,1)-x(I,J,1)
+        enddo
+      enddo
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+      ax(I,J,1)=rpe_05*ax(I,J,1)-x(I,J,1)
+
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+      ax(I,J,1)=rpe_05*ax(I,J,1)-x(I,J,1)
+        enddo
+      enddo
+
+   !! end of rewrite
+
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
 do it=1,itr
+
+
 
  If (it==100) then
    save_time=.true.
-   write(*,*) 'too many iterations'
    exit
  endif
   do l=1,lord
   
 
-    ! calculate beta
+
     ax2(l)=rpe_0
     rax=rpe_0
     DO J=1,n2
@@ -3565,77 +4905,199 @@ do it=1,itr
     enddo
 
     ax2(l)=max(epa,ax2(l))
-    beta=-rax/ax2(l) 
+    beta=-rax/ax2(l)
     errn=0.0d0
 
-  if (iprint==1) then
-     write(*,*) 'beta', it, beta
-  endif
 
 
-      ! update Phi and residual
-      DO J=1,n2
+
+      DO J=1+DP_Depth,n2-DP_Depth
         DO I=1,n1
          p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
          r_HP(I,J)  =r_HP(I,J)   +beta*ax(I,J,l) 
-         r(I,J)  = r_HP(I,J)
          !errn=errn+r_HP(I,J)*r_HP(I,J)
         enddo
       enddo
 
-  !call write_MLfields_iter(p_true(:,:)+p_T(:,:), KT, n1, n2, EXP_NAME, 'H_iter', it)
-  !call write_MLfields_iter(r_HP(:,:), KT, n1, n2, EXP_NAME, 'R_iter', it)
+      DO J=1,DP_Depth
+        DO I=1,n1
+         p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+         r_HP(I,J)  =r_HP(I,J)   +beta*ax(I,J,l) 
+         !errn=errn+r_HP(I,J)*r_HP(I,J)
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+         p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+         r_HP(I,J)  =r_HP(I,J)   +beta*ax(I,J,l) 
+         !errn=errn+r_HP(I,J)*r_HP(I,J)
+        enddo
+      enddo
+
+  call write_MLfields_iter(p_true(:,:)+p_T(:,:), KT, n1, n2, EXP_NAME, 'H_iter', it)
+  call write_MLfields_iter(r_HP(:,:), KT, n1, n2, EXP_NAME, 'R_iter', it)
 
 
- if (iprint==1) then
+call cpu_time(startLP)
+
+      DO J=1+DP_Depth,n2-DP_Depth
+        DO I=1,n1
+
+         r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+
+         r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+
+         r(I,J)  = r_HP(I,J)
+
+        enddo
+      enddo
+
+
+   !! end of rewrite
+!    DO J=1,n2
+!      DO I=1,n1
+      ! If(J<3 .or. J>62) then
+      ! write(*,*) I, J, 'values', r(I,J)%val, ax(I,J,l)%val, beta%val*ax(I,J,l)%val, r(I,J)%val   +beta%val*ax(I,J,l)%val
+      ! end if
+!         p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+        !if (.not. codes) then
+        ! p(I,J)  =p(I,J)   +beta* x(I,J,l) 
+!          r_HP(I,J)  =r_HP(I,J)   +beta*ax(I,J,l) 
+!          r(I,J)  = r_HP(I,J)
+!          errn=errn+r(I,J)*r(I,J)
+
+         !else
+         ! p_T(I,J)=p_T(I,J) +beta* x(I,J,l) 
+         ! r(I,J)  =r(I,J)   +beta*ax(I,J,l)  
+
+         ! errn=errn+r(I,J)*r(I,J)
+         ! end if     
+   
+!      enddo
+      ! If(J<3 .or. J>62) then
+      !  read(*,*) 
+      ! endif
+!    enddo
+
+!!! true residual
+
+!r_true(:,:)=0.0d0
+!call laplfirst(p_true(:,:)+p_T(:,:),r_true(:,:),a11_t,a12_t,a21_t,a22_t,b11_t,b22_t, p0_true,   &
+!     &                           pfx,pfy,s,n1,n2,ip)
+
+!DO J=1,n2
+!  DO I=1,n1
+!    r_true(I,J)=0.5d0*r_true(I,J)-(p_true(I,J)+p_T(I,J)-b_true(I,J))
+! ! write(*,*), i, J, P(i,J)
+!  enddo
+!enddo
+!!! end true residual
+
+if (iprint==1) then
     call write_residual(r,eps*Exit_cond, it, TIME, codesQ, codes, IRHW, DX_rpe, DY_rpe, n1, n2, 52, 5 ,EXP_NAME)
 endif
 
 
-!write(*,*) it, maxval(ABS(r_HP(:,:))), eps*Exit_cond
+!    DO J=1,n2
+!      res_lats(J)=rpe_0
+!      DO I=1,n1
+!   
+!        res_lats(J)=res_lats(J)+r(I,J)*r(I,J)
+!    
+!      enddo
+!    enddo
+!      write(*,*) it, ( sqrt(res_lats(J)), J=1,n2)
 !read(*,*)
+   ! write(*,*) ( sqrt(res_lats(J)%val/res_lats0(J)%val), J=1,n2)
+   ! write(*,*) 'Error: ', error, errn
+   ! write(*,*) 'error .lt. eps', error .lt. eps, eps
+   ! read(*,*)
+    !error=sqrt(errn/err0)
+!   write(*,*) error, sqrt( errn), sqrt(err0)
+!read(*,*)
+ !   if(error .lt. eps) exit
 
-!! check whether exit condition is satisfied
 if(maxval(ABS(r_HP(:,:))) .lt. eps*err0) exit
 
 
-! machine-learned preconditioner
-
-    do J=0,n2-1
-
-      NN_r_HP(:,J+1)= (r_HP(2:n1-1,n2-J))/9.80616
-
-    enddo
-
-
-call ML_precon(MLx(:,:),Layer1, Layer2,NN_Y,NN_r_HP,NNa11,&
-          & NNa12,NNa21,NNa22,NNb11,NNb22,n1-2,n2)
-
-    do J=0,n2-1
-
-     qu(:,n2-J)=MLx(:,J+1)
-    enddo
-    qu(:,:)=qu(:,:)*9.80616
-
-   ! call precon(r,qu, aqu , T_step,  A_c, ps, divi,a11,a12,a21,a22,b11,b22,p0,   &
-   !             &   pfx,pfy,s,n1,n2,ip,ID_PREC, 52, DP_Depth)
+! 1) get timestep length Delta_t from linear stability argument
+!write(*,*) 'in precon ADI'
+!max_QX_QY=(abs(A11(1,1))+abs(A21(1,1)))/(rpe_2*S(1,1))
+!DO J=1,n2
+!
+!  DO I=1,n1
+!     max_QX_QY=max(max_QX_QY,(abs(A11(I,J))+abs(A21(I,J)))/(rpe_2*S(I,J)) )     
+!  ENDDO
+!
+!ENDDO
+!write(*,*) 'precon_ADI', rpe_05/max_QX_QY
 
 
 
+call cpu_time(startLP)
+    call precon(r,qu, aqu , T_step,  A_c, ps, divi,a11,a12,a21,a22,b11,b22,p0,   &
+                &   pfx,pfy,s,n1,n2,ip,ID_PREC, 52, DP_Depth)
 
-! Apply linear operator
+! 
 
   call lapl_depth(qu(:,:),aqu(:,:), A11,A12,A21,A22,B11,B22,P0,pfx,pfy,S,n1,n2,IP , 52,DP_Depth)
+   !call lapl(QU,AQU, A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP)
+ ! write(*,*) 'call to lapl working?'#
 
 
-      DO J=1,n2
+
+  !! rewritten to change precision at poles as desired    
+  !! this sum could be problematic
+
+      DO J=1+DP_Depth,n2-DP_Depth
         DO I=1,n1
       aqu(I,J)=rpe_05*aqu(I,J)-qu(I,J)
         enddo
       enddo
 
+      DO J=1,DP_Depth
+        DO I=1,n1
+      aqu(I,J)=rpe_05*aqu(I,J)-qu(I,J)
+        enddo
+      enddo
 
-! calculate alpha
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+      aqu(I,J)=rpe_05*aqu(I,J)-qu(I,J)
+        enddo
+      enddo
+
+   !! end of rewrite
+
+call cpu_time(endLP)
+lowprectime=lowprectime + endLP-startLP
+!write(*,*) 'second precon', it
+
+
+    !call lapl(r,ar,a11,a12,a21,a22,b11,b22,pfx,pfy,s,n1,n2,ip)
+      
+    !DO J=1,n2
+    !  DO I=1,n1
+    !    ar(I,J)=rpe_05*ar(I,J)-r(I,J)
+    !  end do
+    !enddo
+
     do ll=1,l
       axaqu(ll)=rpe_0
       DO J=1,n2
@@ -3645,14 +5107,11 @@ call ML_precon(MLx(:,:),Layer1, Layer2,NN_Y,NN_r_HP,NNa11,&
       enddo
       del(ll)=-axaqu(ll)/ax2(ll)
 
-      if (iprint==1) then
-        write(*,*) 'alpha', it, del(ll)
-      endif
-
+ !     del(ll)=max(del(ll),rpe_05)
     enddo
 
 
-! new direction that is conjugated to previous
+
     if(l.lt.lord) then
 
       DO J=1,n2
@@ -3671,14 +5130,30 @@ call ML_precon(MLx(:,:),Layer1, Layer2,NN_Y,NN_r_HP,NNa11,&
       enddo
 
     else
-
+  !! rewritten to change precision at poles as desired 
  
-      DO J=1,n2
+      DO J=1+DP_Depth,n2-DP_Depth
         DO I=1,n1
           x(I,J,1)= qu(I,J)+del(1)* x(I,J,1)
           ax(I,J,1)=aqu(I,J)+del(1)*ax(I,J,1)
         enddo
       enddo
+
+      DO J=1,DP_Depth
+        DO I=1,n1
+          x(I,J,1)= qu(I,J)+del(1)* x(I,J,1)
+          ax(I,J,1)=aqu(I,J)+del(1)*ax(I,J,1)
+        enddo
+      enddo
+
+      DO J=n2+1-DP_Depth,n2
+        DO I=1,n1
+          x(I,J,1)= qu(I,J)+del(1)* x(I,J,1)
+          ax(I,J,1)=aqu(I,J)+del(1)*ax(I,J,1)
+        enddo
+      enddo
+
+   !! end of rewrite
 
       do ll=2,l
         DO J=1,n2
@@ -3705,7 +5180,9 @@ call ML_precon(MLx(:,:),Layer1, Layer2,NN_Y,NN_r_HP,NNa11,&
   end if
 
 end do
-
+!write(*,*) niter
+!  200
+!niter=it
 
 if (iprint==1) then
 
@@ -3716,7 +5193,7 @@ call lap0_depth(a11,a12,a21,a22,b11,b22,                   &
 
 
 
-! sanity check to screen
+! end matrices
 r0_true(:,:)=0.0d0
 call laplfirst(p_true(:,:),r0_true(:,:),a11,a12,a21,a22,b11,b22, p0_true,   &
      &                           pfx,pfy,s,n1,n2,ip)
@@ -3754,9 +5231,10 @@ write(*,*) niter
 endif
 
 call cpu_time(finish)
-
+!write(*,*) niter
+!read(*,*)
 icount=icount+1
-
+!write(*,*) 'iterations', niter
 nitsm=nitsm+niter
 sum_time=sum_time+(finish-start)
 sum_lp_time=sum_lp_time+lowprectime
@@ -3778,17 +5256,15 @@ INTEGER :: N, M, I, J
 IF (ID_PREC==5) then !! ADI type preconditioner
 
 ! 1) get timestep length for preconditioner Delta_t from linear stability argument
-!write(*,*) 'in precon ADI'
-max_QX_QY=(abs(A11(1,1))+abs(A21(1,1)))/(rpe_2*S(1,1))
+
+max_QX_QY=(2.0d0*abs(A21(1,1)))/(S(1,1))
 DO J=1,M
-
   DO I=1,N
-     max_QX_QY=max(max_QX_QY,(abs(A11(I,J))+abs(A21(I,J)))/(rpe_2*S(I,J)) )     
+     max_QX_QY=max(max_QX_QY,(2.0d0*abs(A21(I,J)))/(S(I,J)) )     
   ENDDO
-
 ENDDO
-T_step=rpe_025/max_QX_QY !0.92d0!
-Delta_t=rpe_1/T_step
+T_step=max_QX_QY !0.92d0!
+Delta_t=rpe_1/(2.0d0*T_step)
 
   DO J=1,M
    DO I=2,N-1
@@ -3950,138 +5426,6 @@ end if
 
 end subroutine
 
-subroutine ML_precon (QU,Layer1, Layer2,NN_Y,NNr_HP,NN_a11,NN_a12,NN_a21,NN_a22,NN_b11,NN_b22, N, M)
-use implicit_functions_DP
-implicit none
-double precision :: QU(N+2,M)
-double precision :: Layer1(32 ,177,1), &
-                 &  Layer2(32 ,6,1) 
-double precision :: NNr_HP(N,M),NN_a11(N,M),NN_a12(N,M),NN_a21(N,M),NN_a22(N,M),NN_b11(N,M),NN_b22(N,M), NN_Y(M)
-INTEGER :: N, M
-
-double precision :: ML_input0(176),ML_input1(5), scaling
-INTEGER :: I, J,k, lat_box,lon_box,  pos_lat, pos_lon
-INTEGER :: merid_ext, zonal_ext, counter
-
-merid_ext=2
-zonal_ext=2
-
-Do J=0,M-1
-
-    ML_input0(1)=NN_Y(J+1)
-  do I=0,N-1
-
-
-
-   ! get stencil from fields NN_Y,r_HP,NN_a11,NN_a12,NN_a21,NN_a22,NN_b11,NN_b22
-   
-      scaling=0.0d0
-     
-      counter=2
-      do lat_box = -merid_ext,merid_ext
-        do lon_box = -zonal_ext,zonal_ext
-           pos_lat= J+lat_box
-           pos_lon=Modulo(I+lon_box,N)
-           if (pos_lat<0) then
-             pos_lat=abs(pos_lat)-1
-             pos_lon=Modulo(I+int(N/2)+lon_box,N)
-           elseif (pos_lat>=M) then
-             pos_lat=pos_lat-(Mod(pos_lat,M)+1)
-             pos_lon=Modulo(I+int(N/2)+lon_box,N)
-           endif
-           if (pos_lon<0) then
-             !write(*,*) 'Exe1'
-             !write(*,*) pos_lon
-             pos_lon=N-pos_lon+1
-             !write(*,*) pos_lon
-           endif
-           !write(*,*) counter, pos_lon, pos_lat
-           !read(*,*)
-           ML_input0(counter)=  NNr_HP(pos_lon+1, pos_lat+1)
-           if(abs(NNr_HP(pos_lon+1, pos_lat+1))> scaling) then
-             scaling=abs(NNr_HP(pos_lon+1, pos_lat+1))
-           endif
-           ML_input0(counter+1)=NN_a11(pos_lon+1, pos_lat+1)
-           ML_input0(counter+2)=NN_a12(pos_lon+1, pos_lat+1)
-           ML_input0(counter+3)=NN_a21(pos_lon+1, pos_lat+1)
-           ML_input0(counter+4)=NN_a22(pos_lon+1, pos_lat+1)
-           ML_input0(counter+5)=NN_b11(pos_lon+1, pos_lat+1)
-           ML_input0(counter+6)=NN_b22(pos_lon+1, pos_lat+1)
-
-           counter=counter+7  ! continue counting
-       end do
-     end do
-     ML_input0(2:176:7)=ML_input0(2:176:7)/scaling
-   !write(*,*) J, I
-   !write(*,*) (ML_input0(k), k=1,counter-1)
-
-   ! apply neural network
-   !call apply_layer_ReLu(ML_input0,Layer1(J+1,:,:),ML_input1,177,5)
-
-   call apply_layer_Lin(ML_input0,Layer1(J+1,:,:),QU((I+1)+1,J+1),177,1)
-   QU((I+1)+1,J+1)=QU((I+1)+1,J+1)*scaling
-   !write(*,*) 'ML_Output'
-   !write(*,*) QU(I+1+1,J+1)
-   !read(*,*)
-
- end do
-end do
-
-  CALL XBC(QU,N+2,M)
-
-end subroutine
-
-subroutine apply_layer_ReLu(Input,Weights,Output,In_dim,Out_dim)
-double precision :: Input(176)
-double precision :: Weights(177, 5)
-double precision :: Output(5)
-double precision :: summand
-integer :: In_dim, Out_dim
-integer :: I, J
-
-
-
-do J=1,Out_dim
-
-  summand=0.0d0
-
-  do I=1,In_dim-1
-    summand=summand+Input(I)*Weights(I,J)
-  end do
-  summand=summand+Weights(In_dim,J)   !! add the bias
-  
-  Output(J)=dmax1(0.0d0,summand)   !! RELU activation function, hardcoded for now
-end do
-
-
-end subroutine
-
-subroutine apply_layer_Lin(Input,Weights,Output,In_dim,Out_dim)
-double precision :: Input(176)
-double precision :: Weights(177,1)
-double precision :: Output(1)
-double precision :: summand
-integer :: In_dim, Out_dim
-integer :: I, J
-
-
-
-do J=1,Out_dim
-
-  summand=0.0d0
-
-  do I=1,In_dim-1
-    summand=summand+Input(I)*Weights(I,J)
-  end do
-  summand=summand+Weights(In_dim,J)   !! add the bias
-  
-  Output(J)=summand   !! linear activation function, hardcoded for now
-end do
-
-
-end subroutine
-
-
 subroutine precon(R,QU,AQU, T_step,A, ps, divi, A11,A12,A21,A22,B11,B22,P0,U,V,S,N,M,IP,ID_PREC, num_of_bits,DP_Depth)
 
 use implicit_functions_DP
@@ -4164,7 +5508,7 @@ double precision :: T_step, Delta_t
 integer :: iter, max_iter, time_scale  !! number of richardson iterations
 INTEGER :: I, J, iteration
 
-max_iter=1
+max_iter=2
 !initialize the inverse of R with 0
 DO J=1,M
   DO I=1,N
@@ -5067,7 +6411,7 @@ do j=1,m
 end do
 
 If (mountain) then
-  open (13, file = '../Model/ETOPO5.DOS',form='unformatted', access = 'direct', recl = 4320*2)
+  open (13, file = 'ETOPO5.DOS',form='unformatted', access = 'direct', recl = 4320*2)
 
  do i=1,2160
   read (13, rec=i) (TOPO5(i,j), j=1,4320 )
