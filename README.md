@@ -15,7 +15,9 @@ ML Precon; initial period:        sheusp_impl_MLprecon_1M10_initial_15days_res05
 ML Precon reduced; perturbed run: sheusp_impl_MLprecon_reduced_1M10_perturbed_res05.f90
 
 Example using no preconditioner:
+
 gfortran -O2 -c sheusp_impl_NOprecon_1M10_res05.f90
+
 gfortran -O2 -o sheusp_impl_NOprecon_1M10_res05.exe sheusp_functions.o sheusp_impl_NOprecon_1M10_res05.o
 
 
